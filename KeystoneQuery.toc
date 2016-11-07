@@ -2,6 +2,6 @@
 ## Title: Keystone Query
 ## Author: Michael Mrozek
 ## Notes: An addon to find out which Mythic+ keystones your friends have for the week
-## Version: 1.0
+## Version: 1.1
 
 KeystoneQuery.lua

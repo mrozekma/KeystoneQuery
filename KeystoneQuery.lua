@@ -31,9 +31,11 @@ local function getMyKeystone()
 				]]
 				
 				upgradeTypeID = tonumber(parts[12])
-				numAffixes = ({[4587520] = 0, [5111808] = 1, [6160384] = 2, [4063232] = 3})[upgradeTypeID]
+				-- These don't seem right, but I don't have a pile of keystones to test with. Going to get the number of affixes from the level for now instead
+				-- numAffixes = ({[4587520] = 0, [5111808] = 1, [6160384] = 2, [4063232] = 3})[upgradeTypeID]
 				dungeonID = tonumber(parts[15])
 				keystoneLevel = tonumber(parts[16])
+				numAffixes = ({0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3})[keystoneLevel]
 				affixIDs = {}
 				for i = 0, numAffixes - 1 do
 					tinsert(affixIDs, tonumber(parts[17 + i]))
