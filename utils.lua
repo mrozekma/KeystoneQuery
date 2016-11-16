@@ -25,6 +25,14 @@ function playerLink(player)
 	return format('|Hplayer:%s:0|h%s|h', player, gsub(player, format("-%s$", GetRealmName()), ''))
 end
 
+function nameWithRealm(player)
+	if strfind(player, '-') then
+		return player
+	else
+		return format("%s-%s", player, GetRealmName())
+	end
+end
+
 function printf(...)
 	return print(format(...))
 end
