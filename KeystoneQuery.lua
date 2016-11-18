@@ -10,6 +10,28 @@ local ICON = 'Interface\\Icons\\INV_Relics_Hourglass'
 local ADDON_PREFIX = 'KeystoneQuery'
 local LINK_COLORS = {'00ff00', 'ffff00', 'ff0000', 'a335ee'} -- Index is number of affixes on the keystone
 
+-- http://www.wowhead.com/mythic-keystones-and-dungeons-guide#loot
+local LOOT_ILVLS = {
+   nil, -- LOOT_ILVLS[keystoneLevel * 2] is dungeon chest. LOOT_ILVLS[keystoneLevel * 2 + 1] is class hall chest
+
+-- Dungeon Chest  Class Hall Chest  Keystone Level
+        840,             nil,            -- 1
+        845,             850,            -- 2
+        845,             855,            -- 3
+        850,             860,            -- 4
+        850,             865,            -- 5
+        855,             865,            -- 6
+        855,             870,            -- 7
+        860,             870,            -- 8
+        860,             875,            -- 9
+        865,             880,            -- 10
+        870,             880,            -- 11
+        870,             885,            -- 12
+        870,             885,            -- 13
+        870,             885,            -- 14
+        870,             885,            -- 15
+}
+
 local ldbSource = LibStub("LibDataBroker-1.1"):NewDataObject("KeystoneQuery", {
 	type = "data source",
 	icon = ICON,
@@ -101,7 +123,9 @@ local function renderKeystoneLink(dungeonID, keystoneLevel, affixIDs, lootEligib
 		end
 		link = format("%s (%s)", link, table.concat(affixNames, '/'))
 	end
-	if not lootEligible then
+	if lootEligible then
+		link = format("%s (%d/%d)", link, LOOT_ILVLS[keystoneLevel * 2], LOOT_ILVLS[keystoneLevel * 2 + 1])
+	else
 		link = link .. " (depleted)"
 	end
 	return link
