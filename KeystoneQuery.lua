@@ -8,6 +8,7 @@ local MYTHIC_KEYSTONE_ID = 138019
 local REFRESH_RATE = (debugMode and 1 or 15) * 60 -- seconds
 local ICON = 'Interface\\Icons\\INV_Relics_Hourglass'
 local ADDON_PREFIX = 'KeystoneQuery'
+local LINK_COLORS = {'00ff00', 'ffff00', 'ff0000', 'a335ee'} -- Index is number of affixes on the keystone
 
 local ldbSource = LibStub("LibDataBroker-1.1"):NewDataObject("KeystoneQuery", {
 	type = "data source",
@@ -29,6 +30,7 @@ local showedOutOfDateMessage = false
 --TODO Remember and share alt keystones
 --TODO Switch timer updates to broadcast instead of request
 --TODO Detect new keystone on dungeon finish
+--TODO Keystone voting
 
 local function getMyKeystone()
 	log("Scanning for player's keystone")
@@ -84,7 +86,7 @@ end
 local function renderKeystoneLink(dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID)
 	dungeonName = C_ChallengeMode.GetMapInfo(dungeonID)
 	numAffixes = #affixIDs
-	linkColor = ({[0] = '00ff00', [1] = 'ffff00', [2] = 'ff0000', [3] = 'a335ee'})[numAffixes]
+	linkColor = LINK_COLORS[numAffixes]
 	if not lootEligible then
 		linkColor = '999999'
 	end
@@ -103,6 +105,25 @@ local function renderKeystoneLink(dungeonID, keystoneLevel, affixIDs, lootEligib
 		link = link .. " (depleted)"
 	end
 	return link
+end
+
+local function renderAffixes()
+	-- I don't see a way to get the week's affix info from the API, so I just list the affixes on the known keystones
+	affixes = {}
+	for _, keystone in pairs(keystones) do
+		if keystone.hasKeystone then
+			for i, affixID in pairs(keystone.affixIDs) do
+				affixes[i] = affixID
+			end
+		end
+	end
+	
+	rtn = {}
+	for i, affixID in pairs(affixes) do
+		name, desc = C_ChallengeMode.GetAffixInfo(affixID)
+		rtn[i] = format("|cff%s%s|r - %s", LINK_COLORS[i], name, desc)
+	end
+	return rtn
 end
 
 local function getPlayerSection(seek)
@@ -281,6 +302,11 @@ function myAddon:OnInitialize()
 --		elseif cmd == 'friends' or cmd == 'f' then
 		elseif cmd == 'guild' or cmd == 'g' or cmd == '' then
 			showKeystones('guild', false)
+		elseif cmd == 'affix' or cmd == 'affixes' then
+			printf("|T%s:16|t Affixes:", ICON)
+			for _, text in pairs(renderAffixes()) do
+				print(text)
+			end
 		elseif cmd == 'dump' then
 			print("KeystoneQuery table dump:")
 			for name, keystone in table.pairsByKeys(keystones) do
@@ -333,6 +359,12 @@ ldbSource.OnTooltipShow = function(tooltip)
 				end
 			end
 		end
+	end
+	
+	tooltip:AddLine(' ')
+	
+	for _, text in pairs(renderAffixes()) do
+		tooltip:AddLine(text, nil, nil, nil, true)
 	end
 end
 
