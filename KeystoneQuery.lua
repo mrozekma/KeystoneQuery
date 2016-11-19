@@ -1,4 +1,4 @@
-local myAddon = LibStub("AceAddon-3.0"):NewAddon("KeystoneQuery", "AceBucket-3.0", "AceEvent-3.0", "AceSerializer-3.0", "AceTimer-3.0")
+local addon = LibStub("AceAddon-3.0"):NewAddon("KeystoneQuery", "AceBucket-3.0", "AceEvent-3.0", "AceSerializer-3.0", "AceTimer-3.0")
 local ldb = LibStub:GetLibrary("LibDataBroker-1.1")
 local libCompress = LibStub:GetLibrary("LibCompress")
 
@@ -39,32 +39,31 @@ local ldbSource = LibStub("LibDataBroker-1.1"):NewDataObject("KeystoneQuery", {
 	title = "Keystone",
 })
 
-local function log(fmt, ...)
+function addon:log(fmt, ...)
 	if(debugMode) then
 		printf("KeystoneQuery: " .. fmt, ...)
 	end
 end
-
-local keystones = {}
-local broadcastTimer = nil
-local showedOutOfDateMessage = false
 
 --TODO Remember and share alt keystones
 --TODO Switch timer updates to broadcast instead of request
 --TODO Detect new keystone on dungeon finish
 --TODO Keystone voting
 
-local function getMyKeystone()
-	log("Scanning for player's keystone")
+function addon:getMyKeystone(bag)
+	self:log("Scanning for player's keystone")
 	-- GetItemInfo() returns generic info, not info about the player's particular keystone
 	-- name, link, quality, iLevel, reqLevel, class, subclass, maxStack, equipSlot, texture, vendorPrice = GetItemInfo(MYTHIC_KEYSTONE_ID)
 	
 	-- The best way I could find was to scan the player's bags until a keystone is found, and then rip the info out of the item link
-	for bag = 0, NUM_BAG_SLOTS do
+	-- The bag to scan is provided by the ITEM_PUSH event; otherwise we scan all of them
+	local firstBag = bag or 0
+	local lastBag = bag and bag + 1 or NUM_BAG_SLOTS
+	for bag = firstBag, lastBag do
 		for slot = 1, GetContainerNumSlots(bag) do
 			if(GetContainerItemID(bag, slot) == MYTHIC_KEYSTONE_ID) then
 				originalLink = GetContainerItemLink(bag, slot)
-				log("Player's keystone: %s -- %s", originalLink, gsub(originalLink, '|', '!'))
+				self:log("Player's keystone: %s -- %s", originalLink, gsub(originalLink, '|', '!'))
 				parts = { strsplit(':', originalLink) }
 				
 				--[[
@@ -88,35 +87,35 @@ local function getMyKeystone()
 				Y..: (numRelicIDs, relicIDs, ...)
 				]]
 				
-				upgradeTypeID = tonumber(parts[12])
+				local upgradeTypeID = tonumber(parts[12])
 				-- These don't seem right, but I don't have a pile of keystones to test with. Going to get the number of affixes from the level for now instead
 				-- numAffixes = ({[4587520] = 0, [5111808] = 1, [6160384] = 2, [4063232] = 3})[upgradeTypeID]
-				dungeonID = tonumber(parts[15])
-				keystoneLevel = tonumber(parts[16])
-				numAffixes = ({0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3})[keystoneLevel]
-				affixIDs = {}
+				local dungeonID = tonumber(parts[15])
+				local keystoneLevel = tonumber(parts[16])
+				local numAffixes = ({0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3})[keystoneLevel]
+				local affixIDs = {}
 				for i = 0, numAffixes - 1 do
 					tinsert(affixIDs, tonumber(parts[17 + i]))
 				end
-				lootEligible = (tonumber(parts[17 + numAffixes]) == 1)
+				local lootEligible = (tonumber(parts[17 + numAffixes]) == 1)
 				return dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID
 			end
 		end
 	end
 end
 
-local function renderKeystoneLink(dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID)
-	dungeonName = C_ChallengeMode.GetMapInfo(dungeonID)
-	numAffixes = #affixIDs
-	linkColor = LINK_COLORS[numAffixes]
+function addon:renderKeystoneLink(dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID)
+	local dungeonName = C_ChallengeMode.GetMapInfo(dungeonID)
+	local numAffixes = #affixIDs
+	local linkColor = LINK_COLORS[numAffixes]
 	if not lootEligible then
 		linkColor = '999999'
 	end
 	-- v1 messages don't include the upgradeTypeID; just hardcode it for now (we were making bad links before, and will continue to do so for most levels)
 	upgradeTypeID = upgradeTypeID or 45872520
-	link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hitem:%d::::::::110:0:%d:::%d:%d:%s:%d:::|h[%s +%d]|r", keystoneLevel, linkColor, MYTHIC_KEYSTONE_ID, upgradeTypeID, dungeonID, keystoneLevel, table.concat(affixIDs, ':'), lootEligible and '1' or '0', dungeonName, keystoneLevel)
+	local link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hitem:%d::::::::110:0:%d:::%d:%d:%s:%d:::|h[%s +%d]|r", keystoneLevel, linkColor, MYTHIC_KEYSTONE_ID, upgradeTypeID, dungeonID, keystoneLevel, table.concat(affixIDs, ':'), lootEligible and '1' or '0', dungeonName, keystoneLevel)
 	if numAffixes > 0 then
-		affixNames = {}
+		local affixNames = {}
 		for i, id in pairs(affixIDs) do
 			affixName, affixDesc = C_ChallengeMode.GetAffixInfo(id)
 			tinsert(affixNames, strlower(affixName))
@@ -131,10 +130,10 @@ local function renderKeystoneLink(dungeonID, keystoneLevel, affixIDs, lootEligib
 	return link
 end
 
-local function renderAffixes()
+function addon:renderAffixes()
 	-- I don't see a way to get the week's affix info from the API, so I just list the affixes on the known keystones
-	affixes = {}
-	for _, keystone in pairs(keystones) do
+	local affixes = {}
+	for _, keystone in pairs(self.keystones) do
 		if keystone.hasKeystone then
 			for i, affixID in pairs(keystone.affixIDs) do
 				affixes[i] = affixID
@@ -142,18 +141,18 @@ local function renderAffixes()
 		end
 	end
 	
-	rtn = {}
+	local rtn = {}
 	for i, affixID in pairs(affixes) do
-		name, desc = C_ChallengeMode.GetAffixInfo(affixID)
+		local name, desc = C_ChallengeMode.GetAffixInfo(affixID)
 		rtn[i] = format("|cff%s%s|r - %s", LINK_COLORS[i], name, desc)
 	end
 	return rtn
 end
 
-local function getPlayerSection(seek)
-	party = GetHomePartyInfo()
+function addon:getPlayerSection(seek)
+	local party = GetHomePartyInfo()
 	if party then
-		name = nameWithRealm(UnitName('player'))
+		local name = nameWithRealm(UnitName('player'))
 		if name == seek then return 'party' end
 		for _, name in pairs(party) do
 			if nameWithRealm(name) == seek then return 'party' end
@@ -166,13 +165,12 @@ local function getPlayerSection(seek)
 end
 
 --TODO Everything assumes the player is in a guild; handle when they're not
-local function showKeystones(type, showNones)
-	sections = type and {type} or {'party', 'friend', 'guild'}
+function addon:showKeystones(type, showNones)
+	local sections = type and {type} or {'party', 'friend', 'guild'}
 	for _, section in pairs(sections) do
-		labelShown = false
-		for name, keystone in table.pairsByKeys(keystones) do
-			if getPlayerSection(name) == section then
-				keystone = keystones[name]
+		local labelShown = false
+		for name, keystone in table.pairsByKeys(self.keystones) do
+			if self:getPlayerSection(name) == section then
 				if showNones or (keystone and keystone.hasKeystone) then
 					if not labelShown then
 						printf("|T%s:16|t %s keystones:", ICON, gsub(section, '^%l', string.upper))
@@ -183,7 +181,7 @@ local function showKeystones(type, showNones)
 					elseif not keystone.hasKeystone then
 						printf("%s has no keystone", playerLink(name))
 					else
-						printf("%s has %s", playerLink(name), renderKeystoneLink(keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs, keystone.lootEligible, keystone.upgradeTypeID))
+						printf("%s has %s", playerLink(name), self:renderKeystoneLink(keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs, keystone.lootEligible, keystone.upgradeTypeID))
 					end
 				end
 			end
@@ -191,18 +189,18 @@ local function showKeystones(type, showNones)
 	end
 end
 
-function myAddon:networkEncode(data)
+function addon:networkEncode(data)
 	return libCompress:GetAddonEncodeTable():Encode(libCompress:CompressHuffman(self:Serialize(data)))
 end
 
-function myAddon:networkDecode(data)
-	data = libCompress:GetAddonEncodeTable():Decode(data)
-	data, err = libCompress:Decompress(data)
+function addon:networkDecode(data)
+	local data = libCompress:GetAddonEncodeTable():Decode(data)
+	local data, err = libCompress:Decompress(data)
 	if not data then
 		print("Keystone Query: Failed to decompress network data: " .. err)
 		return
 	end
-	success, data = self:Deserialize(data)
+	local success, data = self:Deserialize(data)
 	if not success then
 		print("Keystone Query: Failed to deserialize network data")
 		return
@@ -210,13 +208,13 @@ function myAddon:networkDecode(data)
 	return data
 end
 
-function myAddon:encodeMyKeystone()
-	dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID = getMyKeystone()
+function addon:encodeMyKeystone()
+	local dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID = self:getMyKeystone()
 	-- Ideally we would reconstruct the link on the other end without the need for upgradeTypeID, but I can't figure it out in all cases yet, I'm producing bad links for high-level keystones
 	return self:networkEncode({dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible, upgradeTypeID = upgradeTypeID})
 end
 
-function myAddon:onAddonMsg(event, prefix, msg, channel, sender)
+function addon:onAddonMsg(event, prefix, msg, channel, sender)
 	if prefix ~= ADDON_PREFIX then return end
 	
 	-- Addon message format:
@@ -227,77 +225,72 @@ function myAddon:onAddonMsg(event, prefix, msg, channel, sender)
 	-- A request for this user's keystone info
 	
 	if msg == 'keystone1?' then
-		log('Received keystone v1 request from ' .. sender)
-		dungeonID, keystoneLevel, affixIDs, lootEligible, _ = getMyKeystone()
+		self:log('Received keystone v1 request from ' .. sender)
+		local dungeonID, keystoneLevel, affixIDs, lootEligible, _ = self:getMyKeystone()
 		SendAddonMessage(ADDON_PREFIX, format("keystone1:%d:%d:%s:%d", dungeonID or 0, keystoneLevel or 0, table.concat(affixIDs or {}, ','), lootEligible and 1 or 0), "WHISPER", sender)
 		return
 	end
 	
 	if msg == 'keystone2?' then
-		log('Received keystone v2 request from ' .. sender)
+		self:log('Received keystone v2 request from ' .. sender)
 		SendAddonMessage(ADDON_PREFIX, 'keystone2:' .. self:encodeMyKeystone(), "WHISPER", sender)
 		return
 	end
 
 	-- Another user's keystone info (which we may or may not have asked for, but print either way)
-	prefix = 'keystone1:'
+	local prefix = 'keystone1:'
 	if strsub(msg, 1, strlen(prefix)) == prefix then
-		log('Received keystone v1 response from ' .. sender)
-		_, dungeonID, keystoneLevel, affixIDs, lootEligible = strsplit(':', msg)
+		self:log('Received keystone v1 response from ' .. sender)
+		local _, dungeonID, keystoneLevel, affixIDs, lootEligible = strsplit(':', msg)
 		if tonumber(dungeonID) == 0 then
-			keystones[sender] = {hasKeystone = false}
+			self.keystones[sender] = {hasKeystone = false}
 		else
-			affixIDs = { strsplit(',', affixIDs) }
+			local affixIDs = { strsplit(',', affixIDs) }
 			for k, v in pairs(affixIDs) do
 				affixIDs[k] = tonumber(v)
 			end
-			keystones[sender] = {hasKeystone = true, dungeonID = tonumber(dungeonID), keystoneLevel = tonumber(keystoneLevel), affixIDs = affixIDs, lootEligible = (lootEligible == '1')}
+			self.keystones[sender] = {hasKeystone = true, dungeonID = tonumber(dungeonID), keystoneLevel = tonumber(keystoneLevel), affixIDs = affixIDs, lootEligible = (lootEligible == '1')}
 		end
 		return
 	end
 
 	prefix = 'keystone2:'
 	if strsub(msg, 1, strlen(prefix)) == prefix then
-		log('Received keystone v2 response from ' .. sender)
-		data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
-		keystones[sender] = data
-		keystones[sender].hasKeystone = true
+		self:log('Received keystone v2 response from ' .. sender)
+		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
+		self.keystones[sender] = data
+		self.keystones[sender].hasKeystone = true
 		return
 	end
 
-	if not showedOutOfDateMessage then
-		showedOutOfDateMessage = true
+	if not self.showedOutOfDateMessage then
+		self.showedOutOfDateMessage = true
 		print('Keystone Query: Unrecognized message received from another user. Is this version out of date?')
 	end
 end
 
-function myAddon:startTimer()
-	if broadcastTimer ~= nil then
-		self:CancelTimer(broadcastTimer)
+function addon:startTimer()
+	if self.broadcastTimer ~= nil then
+		self:CancelTimer(self.broadcastTimer)
 	end
-	broadcastTimer = self:ScheduleRepeatingTimer('refresh', REFRESH_RATE)
+	self.broadcastTimer = self:ScheduleRepeatingTimer('refresh', REFRESH_RATE)
 	-- In the future, broadcast updates instead of requesting them. While a bunch of people still have v1, don't, since they'll see printouts on every broadcast
 	-- self:broadcast()
 	self:refresh()
 end
 
-function myAddon:refresh()
-	log("Refreshing keystone list")
-	keystones = {}
+function addon:refresh()
+	self:log("Refreshing keystone list")
+	self.keystones = {}
 	SendAddonMessage(ADDON_PREFIX, 'keystone1?', 'PARTY')
 	SendAddonMessage(ADDON_PREFIX, 'keystone1?', 'GUILD')
 	--TODO Send to friends
 	
-	if getMyKeystone() then
-		ldbSource.text = ' ' .. renderKeystoneLink(getMyKeystone())
+	if self:getMyKeystone() then
+		ldbSource.text = ' ' .. self:renderKeystoneLink(self:getMyKeystone())
 	else
 		ldbSource.text = ' (none)'
 	end
-end
-
-function myAddon:refreshSoon()
-	log("Refreshing in a moment")
-	self:ScheduleTimer('refresh', 2)
 end
 
 function myAddon:broadcast()
@@ -307,8 +300,12 @@ function myAddon:broadcast()
 end
 
 function myAddon:OnInitialize()
+	self.keystones = {}
+	self.broadcastTimer = nil
+	self.showedOutOfDateMessage = false
+	
 	self:RegisterEvent('CHAT_MSG_ADDON', 'onAddonMsg')
-	self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'PARTY_MEMBERS_CHANGED', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refreshSoon')
+	self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'PARTY_MEMBERS_CHANGED', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
 	RegisterAddonMessagePrefix(ADDON_PREFIX)
 
 	SLASH_KeystoneQuery1 = '/keystone?'
@@ -316,28 +313,28 @@ function myAddon:OnInitialize()
 	SlashCmdList['KeystoneQuery'] = function(cmd)
 		-- Default looks up party if in one, else guild
 		if cmd == '' then
-			showKeystones(nil, false)
+			self:showKeystones(nil, false)
 		elseif cmd == 'party' or cmd == 'p' then
 			if UnitInParty('player') then
-				showKeystones('party', true)
+				self:showKeystones('party', true)
 			else
 				print("Not in a party")
 			end
 --		elseif cmd == 'friends' or cmd == 'f' then
 		elseif cmd == 'guild' or cmd == 'g' or cmd == '' then
-			showKeystones('guild', false)
+			self:showKeystones('guild', false)
 		elseif cmd == 'affix' or cmd == 'affixes' then
 			printf("|T%s:16|t Affixes:", ICON)
-			for _, text in pairs(renderAffixes()) do
+			for _, text in pairs(self:renderAffixes()) do
 				print(text)
 			end
 		elseif cmd == 'dump' then
 			print("KeystoneQuery table dump:")
-			for name, keystone in table.pairsByKeys(keystones) do
+			for name, keystone in table.pairsByKeys(self.keystones) do
 				if not keystone.hasKeystone then
-					printf("%s (%s) = no keystone", name, getPlayerSection(name))
+					printf("%s (%s) = no keystone", name, self:getPlayerSection(name))
 				else
-					printf("%s (%s) = %d, %d, %s, %s, %d (%s)", name, getPlayerSection(name), keystone.dungeonID, keystone.keystoneLevel, table.concat(keystone.affixIDs, '/'), keystone.lootEligible and 'true' or 'false', keystone.upgradeTypeID, renderKeystoneLink(keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs, keystone.lootEligible, keystone.upgradeTypeID))
+					printf("%s (%s) = %d, %d, %s, %s, %d (%s)", name, self:getPlayerSection(name), keystone.dungeonID, keystone.keystoneLevel, table.concat(keystone.affixIDs, '/'), keystone.lootEligible and 'true' or 'false', keystone.upgradeTypeID, self:renderKeystoneLink(keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs, keystone.lootEligible, keystone.upgradeTypeID))
 				end
 			end
 		elseif cmd == 'debug off' then
@@ -352,25 +349,24 @@ function myAddon:OnInitialize()
 	end
 end
 
-function myAddon:OnEnable()
-	log("OnEnable")
+function addon:OnEnable()
+	self:log("OnEnable")
 	self:startTimer()
 end
 
-function myAddon:OnDisable()
-	self:CancelTimer(broadcastTimer)
-	broadcastTimer = nil
+function addon:OnDisable()
+	self:CancelTimer(self.broadcastTimer)
+	self.broadcastTimer = nil
 end
 
 ldbSource.OnTooltipShow = function(tooltip)
 	tooltip:SetText('Mythic Keystones', HIGHLIGHT_FONT_COLOR:GetRGB())
 	
-	sections = {'party', 'friend', 'guild'}
+	local sections = {'party', 'friend', 'guild'}
 	for _, section in pairs(sections) do
-		labelShown = false
-		for name, keystone in table.pairsByKeys(keystones) do
-			if getPlayerSection(name) == section then
-				keystone = keystones[name]
+		local labelShown = false
+		for name, keystone in table.pairsByKeys(addon.keystones) do
+			if addon:getPlayerSection(name) == section then
 				if keystone and keystone.hasKeystone then
 					if not labelShown then
 						tooltip:AddLine(' ')
@@ -379,7 +375,7 @@ ldbSource.OnTooltipShow = function(tooltip)
 						tooltip:AddLine(string.upper(strsub(section, 1, 1)) .. strsub(section, 2))
 						labelShown = true
 					end
-					tooltip:AddDoubleLine(renderKeystoneLink(keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs, keystone.lootEligible, keystone.upgradeTypeID), playerLink(name))
+					tooltip:AddDoubleLine(addon:renderKeystoneLink(keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs, keystone.lootEligible, keystone.upgradeTypeID), playerLink(name))
 				end
 			end
 		end
@@ -387,7 +383,7 @@ ldbSource.OnTooltipShow = function(tooltip)
 	
 	tooltip:AddLine(' ')
 	
-	for _, text in pairs(renderAffixes()) do
+	for _, text in pairs(addon:renderAffixes()) do
 		tooltip:AddLine(text, nil, nil, nil, true)
 	end
 end
@@ -397,7 +393,7 @@ end
 local originalSendChatMessage = SendChatMessage
 function SendChatMessage(msg, ...)
 	if msg == 'keystone' or msg == 'key' then
-		msg = renderKeystoneLink(getMyKeystone())
+		msg = self:renderKeystoneLink(self:getMyKeystone())
 	end
 	return originalSendChatMessage(msg, ...)
 end
