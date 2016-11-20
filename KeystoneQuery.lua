@@ -5,7 +5,7 @@ local libCompress = LibStub:GetLibrary("LibCompress")
 local debugMode = false
 
 local MYTHIC_KEYSTONE_ID = 138019
-local REFRESH_RATE = (debugMode and 1 or 15) * 60 -- seconds
+local BROADCAST_RATE = (debugMode and 1 or 15) * 60 -- seconds
 local ICON = 'Interface\\Icons\\INV_Relics_Hourglass'
 local ADDON_PREFIX = 'KeystoneQuery'
 local LINK_COLORS = {'00ff00', 'ffff00', 'ff0000', 'a335ee'} -- Index is number of affixes on the keystone
@@ -50,15 +50,15 @@ end
 --TODO Detect new keystone on dungeon finish
 --TODO Keystone voting
 
-function addon:getMyKeystone(bag)
+function addon:setMyKeystone(seekBag)
 	self:log("Scanning for player's keystone")
 	-- GetItemInfo() returns generic info, not info about the player's particular keystone
 	-- name, link, quality, iLevel, reqLevel, class, subclass, maxStack, equipSlot, texture, vendorPrice = GetItemInfo(MYTHIC_KEYSTONE_ID)
 	
 	-- The best way I could find was to scan the player's bags until a keystone is found, and then rip the info out of the item link
 	-- The bag to scan is provided by the ITEM_PUSH event; otherwise we scan all of them
-	local firstBag = bag or 0
-	local lastBag = bag and bag + 1 or NUM_BAG_SLOTS
+	local firstBag = seekBag or 0
+	local lastBag = seekBag and seekBag + 1 or NUM_BAG_SLOTS
 	for bag = firstBag, lastBag do
 		for slot = 1, GetContainerNumSlots(bag) do
 			if(GetContainerItemID(bag, slot) == MYTHIC_KEYSTONE_ID) then
@@ -98,32 +98,60 @@ function addon:getMyKeystone(bag)
 					tinsert(affixIDs, tonumber(parts[17 + i]))
 				end
 				local lootEligible = (tonumber(parts[17 + numAffixes]) == 1)
-				return dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID
+				
+				local name = nameWithRealm(UnitName('player'))
+				local rtn = {dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible, upgradeTypeID = upgradeTypeID}
+				
+				-- Detecting if the weekly reset has happened is surprisingly hard (even pinning down the day it happens on each realm is hard)
+				-- If the player's keystone is in myKeystones already and the level has decreased, it's probably the result of the reset; clear the whole table in that case
+				local oldKeystone = self.myKeystones[name]
+				if oldKeystone and oldKeystone.hasKeystone and oldKeystone.keystoneLevel > keystoneLevel then
+					-- self.myKeystones is an alias for a field in self.db, so we can't just do self.myKeystones = {}
+					for k, _ in pairs(self.myKeystones) do
+						self.myKeystones[k] = nil
+					end
+				end
+				
+				self.myKeystones[name] = rtn
+				return rtn
 			end
 		end
 	end
+	-- If we scanned all bags and didn't find a keystone, clear the (potential) existing myKeystones entry
+	if not seekBag then
+		self.myKeystones[nameWithRealm(UnitName('player'))] = nil
+	end
 end
 
-function addon:renderKeystoneLink(dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID)
-	local dungeonName = C_ChallengeMode.GetMapInfo(dungeonID)
-	local numAffixes = #affixIDs
+function addon:getMyKeystone()
+	local name = nameWithRealm(UnitName('player'))
+	local rtn = self.myKeystones[name]
+	if not rtn then
+		rtn = self:setMyKeystone()
+	end
+	return rtn
+end
+
+function addon:renderKeystoneLink(keystone)
+	local dungeonName = C_ChallengeMode.GetMapInfo(keystone.dungeonID)
+	local numAffixes = #keystone.affixIDs
 	local linkColor = LINK_COLORS[numAffixes]
-	if not lootEligible then
+	if not keystone.lootEligible then
 		linkColor = '999999'
 	end
 	-- v1 messages don't include the upgradeTypeID; just hardcode it for now (we were making bad links before, and will continue to do so for most levels)
-	upgradeTypeID = upgradeTypeID or 45872520
-	local link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hitem:%d::::::::110:0:%d:::%d:%d:%s:%d:::|h[%s +%d]|r", keystoneLevel, linkColor, MYTHIC_KEYSTONE_ID, upgradeTypeID, dungeonID, keystoneLevel, table.concat(affixIDs, ':'), lootEligible and '1' or '0', dungeonName, keystoneLevel)
+	keystone.upgradeTypeID = keystone.upgradeTypeID or 45872520
+	local link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hitem:%d::::::::110:0:%d:::%d:%d:%s:%d:::|h[%s +%d]|r", keystone.keystoneLevel, linkColor, MYTHIC_KEYSTONE_ID, keystone.upgradeTypeID, keystone.dungeonID, keystone.keystoneLevel, table.concat(keystone.affixIDs, ':'), keystone.lootEligible and '1' or '0', dungeonName, keystone.keystoneLevel)
 	if numAffixes > 0 then
 		local affixNames = {}
-		for i, id in pairs(affixIDs) do
+		for i, id in pairs(keystone.affixIDs) do
 			affixName, affixDesc = C_ChallengeMode.GetAffixInfo(id)
 			tinsert(affixNames, strlower(affixName))
 		end
 		link = format("%s (%s)", link, table.concat(affixNames, '/'))
 	end
-	if lootEligible then
-		link = format("%s (%d/%d)", link, LOOT_ILVLS[keystoneLevel * 2], LOOT_ILVLS[keystoneLevel * 2 + 1])
+	if keystone.lootEligible then
+		link = format("%s (%d/%d)", link, LOOT_ILVLS[keystone.keystoneLevel * 2], LOOT_ILVLS[keystone.keystoneLevel * 2 + 1])
 	else
 		link = link .. " (depleted)"
 	end
@@ -150,6 +178,11 @@ function addon:renderAffixes()
 end
 
 function addon:getPlayerSection(seek)
+	local keystone = self.keystones[seek]
+	if keystone and keystone.isAlt then
+		return 'alt'
+	end
+
 	local party = GetHomePartyInfo()
 	if party then
 		local name = nameWithRealm(UnitName('player'))
@@ -166,7 +199,7 @@ end
 
 --TODO Everything assumes the player is in a guild; handle when they're not
 function addon:showKeystones(type, showNones)
-	local sections = type and {type} or {'party', 'friend', 'guild'}
+	local sections = type and {type} or {'party', 'friend', 'guild', 'alt'}
 	for _, section in pairs(sections) do
 		local labelShown = false
 		for name, keystone in table.pairsByKeys(self.keystones) do
@@ -181,7 +214,7 @@ function addon:showKeystones(type, showNones)
 					elseif not keystone.hasKeystone then
 						printf("%s has no keystone", playerLink(name))
 					else
-						printf("%s has %s", playerLink(name), self:renderKeystoneLink(keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs, keystone.lootEligible, keystone.upgradeTypeID))
+						printf("%s has %s", playerLink(name), self:renderKeystoneLink(keystone))
 					end
 				end
 			end
@@ -208,10 +241,13 @@ function addon:networkDecode(data)
 	return data
 end
 
+--TODO Remove when no longer sending v1 messages
 function addon:encodeMyKeystone()
-	local dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID = self:getMyKeystone()
-	-- Ideally we would reconstruct the link on the other end without the need for upgradeTypeID, but I can't figure it out in all cases yet, I'm producing bad links for high-level keystones
-	return self:networkEncode({dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible, upgradeTypeID = upgradeTypeID})
+	return self:networkEncode(self:getMyKeystone())
+end
+
+function addon:encodeMyKeystones()
+	return self:networkEncode(self.myKeystones)
 end
 
 function addon:onAddonMsg(event, prefix, msg, channel, sender)
@@ -221,22 +257,32 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 	-- v1: keystone1:dungeonID:keystoneLevel:affixID,affixID,affixID:lootEligible
 	-- v2: keystone2:(Table serialized/compressed/encoded with Ace3)
 	--   Table keys: dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID
+	-- v3: keystone3:(Table mapping player-realm name to v2 keystone table)
 
 	-- A request for this user's keystone info
-	
+
 	if msg == 'keystone1?' then
 		self:log('Received keystone v1 request from ' .. sender)
-		local dungeonID, keystoneLevel, affixIDs, lootEligible, _ = self:getMyKeystone()
-		SendAddonMessage(ADDON_PREFIX, format("keystone1:%d:%d:%s:%d", dungeonID or 0, keystoneLevel or 0, table.concat(affixIDs or {}, ','), lootEligible and 1 or 0), "WHISPER", sender)
+		local keystone = self:getMyKeystone()
+		SendAddonMessage(ADDON_PREFIX, format("keystone1:%d:%d:%s:%d", keystone and keystone.dungeonID or 0, keystone and keystone.keystoneLevel or 0, keystone and table.concat(keystone.affixIDs, ',') or '', (keystone and keystone.lootEligible) and 1 or 0), "WHISPER", sender)
 		return
 	end
 	
+	-- No released version ever requested v2 keystones, so this shouldn't be necessary
+	--[[
 	if msg == 'keystone2?' then
 		self:log('Received keystone v2 request from ' .. sender)
 		SendAddonMessage(ADDON_PREFIX, 'keystone2:' .. self:encodeMyKeystone(), "WHISPER", sender)
 		return
 	end
+	]]
 
+	if msg == 'keystone3?' then
+		self:log('Received keystone v3 request from ' .. sender)
+		SendAddonMessage(ADDON_PREFIX, 'keystone3:' .. self:encodeMyKeystones(), "WHISPER", sender)
+		return
+	end
+	
 	-- Another user's keystone info (which we may or may not have asked for, but print either way)
 	local prefix = 'keystone1:'
 	if strsub(msg, 1, strlen(prefix)) == prefix then
@@ -254,12 +300,29 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 		return
 	end
 
+	-- No released version ever sent v2 keystones, so this shouldn't be necessary
+	--[[
 	prefix = 'keystone2:'
 	if strsub(msg, 1, strlen(prefix)) == prefix then
 		self:log('Received keystone v2 response from ' .. sender)
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
 		self.keystones[sender] = data
 		self.keystones[sender].hasKeystone = true
+		return
+	end
+	]]
+
+	prefix = 'keystone3:'
+	if strsub(msg, 1, strlen(prefix)) == prefix then
+		self:log('Received keystone v3 response from ' .. sender)
+		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
+		for name, keystone in pairs(data) do
+			--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
+			self.keystones[name] = keystone
+			self.keystones[name].hasKeystone = true
+			self.keystones[name].isAlt = (name ~= sender)
+			self.keystones[name].recordTime = time()
+		end
 		return
 	end
 
@@ -269,42 +332,64 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 	end
 end
 
-function addon:startTimer()
+function addon:onItemPush(eventName, bag, icon)
+	-- 'bag' doesn't appear to be the bag number like I thought, so just scanning them all
+	self:setMyKeystone()
+end
+
+function addon:startTimers()
 	if self.broadcastTimer ~= nil then
 		self:CancelTimer(self.broadcastTimer)
 	end
-	self.broadcastTimer = self:ScheduleRepeatingTimer('refresh', REFRESH_RATE)
-	-- In the future, broadcast updates instead of requesting them. While a bunch of people still have v1, don't, since they'll see printouts on every broadcast
-	-- self:broadcast()
-	self:refresh()
+	self.broadcastTimer = self:ScheduleRepeatingTimer('broadcast', BROADCAST_RATE)
+	self:broadcast()
 end
 
 function addon:refresh()
 	self:log("Refreshing keystone list")
 	self.keystones = {}
-	SendAddonMessage(ADDON_PREFIX, 'keystone1?', 'PARTY')
-	SendAddonMessage(ADDON_PREFIX, 'keystone1?', 'GUILD')
+	SendAddonMessage(ADDON_PREFIX, 'keystone3?', 'PARTY')
+	SendAddonMessage(ADDON_PREFIX, 'keystone3?', 'GUILD')
 	--TODO Send to friends
-	
+
+	-- Update the LDB text
 	if self:getMyKeystone() then
 		ldbSource.text = ' ' .. self:renderKeystoneLink(self:getMyKeystone())
 	else
 		ldbSource.text = ' (none)'
 	end
+	
+	-- Purge old keystone entries
+	-- (at the moment we clear the whole list every time, so this isn't needed)
+	--[[
+	for name, keystone in pairs(self.keystones) do
+		if keystone.recordTime > BROADCAST_RATE * 2 then
+			self.keystones[name] = nil
+		end
+	end
+	]]
 end
 
-function myAddon:broadcast()
-	SendAddonMessage(ADDON_PREFIX, 'keystone2:' .. self:encodeMyKeystone(), 'PARTY')
-	SendAddonMessage(ADDON_PREFIX, 'keystone2:' .. self:encodeMyKeystone(), 'GUILD')
+function addon:broadcast()
+	SendAddonMessage(ADDON_PREFIX, 'keystone3:' .. self:encodeMyKeystones(), 'PARTY')
+	SendAddonMessage(ADDON_PREFIX, 'keystone3:' .. self:encodeMyKeystones(), 'GUILD')
 	--TODO Send to friends
 end
 
-function myAddon:OnInitialize()
+function addon:OnInitialize()
 	self.keystones = {}
 	self.broadcastTimer = nil
 	self.showedOutOfDateMessage = false
 	
+	local dbDefaults = {
+		keystones = {}
+	}
+	self.db = LibStub('AceDB-3.0'):New('KeystoneQueryDB', {factionrealm = dbDefaults}, true).factionrealm
+	self.myKeystones = self.db.keystones
+
 	self:RegisterEvent('CHAT_MSG_ADDON', 'onAddonMsg')
+	self:RegisterEvent('ITEM_PUSH', 'onItemPush')
+	--TODO Call setMyKeystone(nil) when item is destroyed; not sure which event that is
 	self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'PARTY_MEMBERS_CHANGED', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
 	RegisterAddonMessagePrefix(ADDON_PREFIX)
 
@@ -328,13 +413,23 @@ function myAddon:OnInitialize()
 			for _, text in pairs(self:renderAffixes()) do
 				print(text)
 			end
+		elseif cmd == 'refresh' then
+			addon:refresh()
 		elseif cmd == 'dump' then
 			print("KeystoneQuery table dump:")
 			for name, keystone in table.pairsByKeys(self.keystones) do
+				printf(name)
+				printf("  section: %s", self:getPlayerSection(name))
 				if not keystone.hasKeystone then
-					printf("%s (%s) = no keystone", name, self:getPlayerSection(name))
+					printf("  (no keystone)")
 				else
-					printf("%s (%s) = %d, %d, %s, %s, %d (%s)", name, self:getPlayerSection(name), keystone.dungeonID, keystone.keystoneLevel, table.concat(keystone.affixIDs, '/'), keystone.lootEligible and 'true' or 'false', keystone.upgradeTypeID, self:renderKeystoneLink(keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs, keystone.lootEligible, keystone.upgradeTypeID))
+					printf("  dungeonID: %d", keystone.dungeonID)
+					printf("  keystoneLevel: %d", keystone.keystoneLevel)
+					printf("  affixIDs: %s", table.concat(keystone.affixIDs, '/'))
+					printf("  lootEligible: %s", keystone.lootEligible and 'true' or 'false')
+					printf("  upgradeTypeID: %d", keystone.upgradeTypeID)
+					printf("  isAlt: %s", keystone.isAlt and 'true' or 'false')
+					printf("  recordTime: %d", keystone.recordTime)
 				end
 			end
 		elseif cmd == 'debug off' then
@@ -351,7 +446,7 @@ end
 
 function addon:OnEnable()
 	self:log("OnEnable")
-	self:startTimer()
+	self:startTimers()
 end
 
 function addon:OnDisable()
@@ -362,8 +457,8 @@ end
 ldbSource.OnTooltipShow = function(tooltip)
 	tooltip:SetText('Mythic Keystones', HIGHLIGHT_FONT_COLOR:GetRGB())
 	
-	local sections = {'party', 'friend', 'guild'}
-	for _, section in pairs(sections) do
+	local sections = {party = 'Party', friend = 'Friends', guild = 'Guild', alt = 'Alts'}
+	for section, label in pairs(sections) do
 		local labelShown = false
 		for name, keystone in table.pairsByKeys(addon.keystones) do
 			if addon:getPlayerSection(name) == section then
@@ -372,10 +467,10 @@ ldbSource.OnTooltipShow = function(tooltip)
 						tooltip:AddLine(' ')
 						-- For some reason I cannot figure out, this results in red text in the tooltip
 						-- tooltip:AddLine(gsub(section, '^%l', string.upper))
-						tooltip:AddLine(string.upper(strsub(section, 1, 1)) .. strsub(section, 2))
+						tooltip:AddLine(label)
 						labelShown = true
 					end
-					tooltip:AddDoubleLine(addon:renderKeystoneLink(keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs, keystone.lootEligible, keystone.upgradeTypeID), playerLink(name))
+					tooltip:AddDoubleLine(addon:renderKeystoneLink(keystone), playerLink(name))
 				end
 			end
 		end
