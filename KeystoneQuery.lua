@@ -284,6 +284,7 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 	if msg == 'keystone4?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
 		self:log('Received keystone v4 request from ' .. sender)
 		self:sendKeystones('WHISPER', sender)
+		return
 	end
 	
 	-- Another user's keystone info (which we may or may not have asked for, but print either way)
@@ -349,6 +350,7 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 	if not self.showedOutOfDateMessage then
 		self.showedOutOfDateMessage = true
 		print('Keystone Query: Unrecognized message received from another user. Is this version out of date?')
+		self:log("From " .. sender .. ": " .. msg)
 	end
 end
 
