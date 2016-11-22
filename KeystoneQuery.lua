@@ -8,7 +8,7 @@ local MYTHIC_KEYSTONE_ID = 138019
 local BROADCAST_RATE = (debugMode and 1 or 15) * 60 -- seconds
 local ICON = 'Interface\\Icons\\INV_Relics_Hourglass'
 local ADDON_PREFIX = 'KeystoneQuery'
-local LINK_COLORS = {'00ff00', 'ffff00', 'ff0000', 'a335ee'} -- Index is number of affixes on the keystone
+local LINK_COLORS = {'00ff00', 'ffff00', 'ff0000', 'a335ee'} -- Index is number of affixes + 1 on the keystone (thanks Lua for your brilliant 1-indexing)
 
 -- http://www.wowhead.com/mythic-keystones-and-dungeons-guide#loot
 local LOOT_ILVLS = {
@@ -135,7 +135,7 @@ end
 function addon:renderKeystoneLink(keystone)
 	local dungeonName = C_ChallengeMode.GetMapInfo(keystone.dungeonID)
 	local numAffixes = #keystone.affixIDs
-	local linkColor = LINK_COLORS[numAffixes]
+	local linkColor = LINK_COLORS[numAffixes + 1]
 	if not keystone.lootEligible then
 		linkColor = '999999'
 	end
@@ -172,7 +172,7 @@ function addon:renderAffixes()
 	local rtn = {}
 	for i, affixID in pairs(affixes) do
 		local name, desc = C_ChallengeMode.GetAffixInfo(affixID)
-		rtn[i] = format("|cff%s%s|r - %s", LINK_COLORS[i], name, desc)
+		rtn[i] = format("|cff%s%s|r - %s", LINK_COLORS[i + 1], name, desc)
 	end
 	return rtn
 end
@@ -343,6 +343,7 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 		self.keystones[name].hasKeystone = true
 		self.keystones[name].isAlt = (name ~= sender)
 		self.keystones[name].recordTime = time()
+		return
 	end
 		
 	if not self.showedOutOfDateMessage then
