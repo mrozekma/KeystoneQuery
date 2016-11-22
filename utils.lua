@@ -1,3 +1,11 @@
+-- http://lua-users.org/wiki/StringRecipes
+function string.starts(String,Start)
+   return string.sub(String,1,string.len(Start))==Start
+end
+function string.ends(String,End)
+   return End=='' or string.sub(String,-string.len(End))==End
+end
+
 -- https://www.lua.org/pil/19.3.html
 function table.pairsByKeys (t, f)
 	local a = {}

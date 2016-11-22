@@ -241,13 +241,10 @@ function addon:networkDecode(data)
 	return data
 end
 
---TODO Remove when no longer sending v1 messages
-function addon:encodeMyKeystone()
-	return self:networkEncode(self:getMyKeystone())
-end
-
-function addon:encodeMyKeystones()
-	return self:networkEncode(self.myKeystones)
+function addon:sendKeystones(type, target)
+	for name, keystone in pairs(self.myKeystones) do
+		SendAddonMessage(ADDON_PREFIX, 'keystone4:' .. self:networkEncode({name = name, keystone = keystone}), type, target)
+	end
 end
 
 function addon:onAddonMsg(event, prefix, msg, channel, sender)
@@ -277,15 +274,21 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 	end
 	]]
 
+	-- v3 encodings are broken, but don't want to remove them in case a client requests them. Instead return empty data
 	if msg == 'keystone3?' then
 		self:log('Received keystone v3 request from ' .. sender)
-		SendAddonMessage(ADDON_PREFIX, 'keystone3:' .. self:encodeMyKeystones(), "WHISPER", sender)
+		SendAddonMessage(ADDON_PREFIX, 'keystone3:' .. self:networkEncode(nil), "WHISPER", sender)
 		return
+	end
+	
+	if msg == 'keystone4?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
+		self:log('Received keystone v4 request from ' .. sender)
+		self:sendKeystones('WHISPER', sender)
 	end
 	
 	-- Another user's keystone info (which we may or may not have asked for, but print either way)
 	local prefix = 'keystone1:'
-	if strsub(msg, 1, strlen(prefix)) == prefix then
+	if string.starts(msg, prefix) then
 		self:log('Received keystone v1 response from ' .. sender)
 		local _, dungeonID, keystoneLevel, affixIDs, lootEligible = strsplit(':', msg)
 		if tonumber(dungeonID) == 0 then
@@ -303,7 +306,7 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 	-- No released version ever sent v2 keystones, so this shouldn't be necessary
 	--[[
 	prefix = 'keystone2:'
-	if strsub(msg, 1, strlen(prefix)) == prefix then
+	if string.starts(msg, prefix) then
 		self:log('Received keystone v2 response from ' .. sender)
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
 		self.keystones[sender] = data
@@ -313,8 +316,10 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 	]]
 
 	prefix = 'keystone3:'
-	if strsub(msg, 1, strlen(prefix)) == prefix then
+	if string.starts(msg, prefix) then
 		self:log('Received keystone v3 response from ' .. sender)
+		self:log('Ignoring')
+		--[[
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
 		for name, keystone in pairs(data) do
 			--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
@@ -323,9 +328,23 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 			self.keystones[name].isAlt = (name ~= sender)
 			self.keystones[name].recordTime = time()
 		end
+		]]
 		return
 	end
 
+	prefix = 'keystone4:'
+	if string.starts(msg, prefix) then
+		self:log('Received keystone v4 response from ' .. sender)
+		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
+		local name = data.name
+		self:log('  Keystone data for ' .. name)
+		--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
+		self.keystones[name] = data.keystone
+		self.keystones[name].hasKeystone = true
+		self.keystones[name].isAlt = (name ~= sender)
+		self.keystones[name].recordTime = time()
+	end
+		
 	if not self.showedOutOfDateMessage then
 		self.showedOutOfDateMessage = true
 		print('Keystone Query: Unrecognized message received from another user. Is this version out of date?')
@@ -348,8 +367,8 @@ end
 function addon:refresh()
 	self:log("Refreshing keystone list")
 	self.keystones = {}
-	SendAddonMessage(ADDON_PREFIX, 'keystone3?', 'PARTY')
-	SendAddonMessage(ADDON_PREFIX, 'keystone3?', 'GUILD')
+	SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'PARTY')
+	SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'GUILD')
 	--TODO Send to friends
 
 	-- Update the LDB text
@@ -371,8 +390,8 @@ function addon:refresh()
 end
 
 function addon:broadcast()
-	SendAddonMessage(ADDON_PREFIX, 'keystone3:' .. self:encodeMyKeystones(), 'PARTY')
-	SendAddonMessage(ADDON_PREFIX, 'keystone3:' .. self:encodeMyKeystones(), 'GUILD')
+	self:sendKeystones('PARTY')
+	self:sendKeystones('GUILD')
 	--TODO Send to friends
 end
 
@@ -388,7 +407,7 @@ function addon:OnInitialize()
 	self.myKeystones = self.db.keystones
 
 	self:RegisterEvent('CHAT_MSG_ADDON', 'onAddonMsg')
-	self:RegisterEvent('ITEM_PUSH', 'onItemPush')
+	self:RegisterBucketEvent('ITEM_PUSH', 2, 'onItemPush')
 	--TODO Call setMyKeystone(nil) when item is destroyed; not sure which event that is
 	self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'PARTY_MEMBERS_CHANGED', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
 	RegisterAddonMessagePrefix(ADDON_PREFIX)
