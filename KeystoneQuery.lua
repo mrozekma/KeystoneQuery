@@ -45,21 +45,21 @@ function addon:log(fmt, ...)
 	end
 end
 
---TODO Remember and share alt keystones
---TODO Switch timer updates to broadcast instead of request
 --TODO Detect new keystone on dungeon finish
 --TODO Keystone voting
+--TODO Properly order sections
+--TODO Move alt keystones under mains instead of in their own section
+--TODO Color names based on class
 
-function addon:setMyKeystone(seekBag)
+function addon:setMyKeystone()
 	self:log("Scanning for player's keystone")
+	local name = nameWithRealm(UnitName('player'))
 	-- GetItemInfo() returns generic info, not info about the player's particular keystone
 	-- name, link, quality, iLevel, reqLevel, class, subclass, maxStack, equipSlot, texture, vendorPrice = GetItemInfo(MYTHIC_KEYSTONE_ID)
 	
 	-- The best way I could find was to scan the player's bags until a keystone is found, and then rip the info out of the item link
 	-- The bag to scan is provided by the ITEM_PUSH event; otherwise we scan all of them
-	local firstBag = seekBag or 0
-	local lastBag = seekBag and seekBag + 1 or NUM_BAG_SLOTS
-	for bag = firstBag, lastBag do
+	for bag = 0, NUM_BAG_SLOTS do
 		for slot = 1, GetContainerNumSlots(bag) do
 			if(GetContainerItemID(bag, slot) == MYTHIC_KEYSTONE_ID) then
 				originalLink = GetContainerItemLink(bag, slot)
@@ -99,26 +99,25 @@ function addon:setMyKeystone(seekBag)
 				end
 				local lootEligible = (tonumber(parts[17 + numAffixes]) == 1)
 				
-				local name = nameWithRealm(UnitName('player'))
 				local rtn = {dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible, upgradeTypeID = upgradeTypeID}
-				
-				-- Detecting if the weekly reset has happened is surprisingly hard (even pinning down the day it happens on each realm is hard)
-				-- If the player's keystone is in myKeystones already and the level has decreased, it's probably the result of the reset; clear the whole table in that case
-				local oldKeystone = self.myKeystones[name]
-				if oldKeystone and oldKeystone.hasKeystone and oldKeystone.keystoneLevel > keystoneLevel then
-					-- self.myKeystones is an alias for a field in self.db, so we can't just do self.myKeystones = {}
-					for k, _ in pairs(self.myKeystones) do
-						self.myKeystones[k] = nil
-					end
-				end
-				
 				self.myKeystones[name] = rtn
 				return rtn
 			end
 		end
 	end
-	-- If we scanned all bags and didn't find a keystone, clear the (potential) existing myKeystones entry
-	if not seekBag then
+	
+	self:log('No keystone found')
+	
+	-- Detecting if the weekly reset has happened is surprisingly hard (even pinning down the day it happens on each realm is hard)
+	-- If we had a keystone but don't anymore, assume it was the reset and wipe myKeystones.
+	local oldKeystone = self.myKeystones[name]
+	if oldKeystone then
+		self:log('Expected a keystone -- assuming weekly reset and clearing alt keystone list')
+		-- self.myKeystones is an alias for a field in self.db, so we can't just do self.myKeystones = {}
+		for k, _ in pairs(self.myKeystones) do
+			self.myKeystones[k] = nil
+		end
+	else
 		self.myKeystones[nameWithRealm(UnitName('player'))] = nil
 	end
 end
@@ -411,9 +410,11 @@ function addon:OnInitialize()
 
 	self:RegisterEvent('CHAT_MSG_ADDON', 'onAddonMsg')
 	self:RegisterBucketEvent('ITEM_PUSH', 2, 'onItemPush')
-	--TODO Call setMyKeystone(nil) when item is destroyed; not sure which event that is
+	--TODO Call setMyKeystone() when item is destroyed; not sure which event that is
 	self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'PARTY_MEMBERS_CHANGED', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
 	RegisterAddonMessagePrefix(ADDON_PREFIX)
+	
+	self:setMyKeystone()
 
 	SLASH_KeystoneQuery1 = '/keystone?'
 	SLASH_KeystoneQuery2 = '/key?'
