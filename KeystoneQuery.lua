@@ -47,7 +47,6 @@ end
 
 --TODO Detect new keystone on dungeon finish
 --TODO Keystone voting
---TODO Properly order sections
 --TODO Move alt keystones under mains instead of in their own section
 --TODO Color names based on class
 
@@ -199,7 +198,7 @@ end
 --TODO Everything assumes the player is in a guild; handle when they're not
 function addon:showKeystones(type, showNones)
 	local sections = type and {type} or {'party', 'friend', 'guild', 'alt'}
-	for _, section in pairs(sections) do
+	for _, section in ipairs(sections) do
 		local labelShown = false
 		for name, keystone in table.pairsByKeys(self.keystones) do
 			if self:getPlayerSection(name) == section then
@@ -487,18 +486,21 @@ end
 
 ldbSource.OnTooltipShow = function(tooltip)
 	tooltip:SetText('Mythic Keystones', HIGHLIGHT_FONT_COLOR:GetRGB())
-	
-	local sections = {party = 'Party', friend = 'Friends', guild = 'Guild', alt = 'Alts'}
-	for section, label in pairs(sections) do
+
+	local sections = {
+		{key = 'party', label = 'Party'},
+		{key = 'friend', label = 'Friends'},
+		{key = 'guild', label = 'Guild'},
+		{key = 'alt', label = 'Alts'},
+	}
+	for _, section in ipairs(sections) do
 		local labelShown = false
 		for name, keystone in table.pairsByKeys(addon.keystones) do
-			if addon:getPlayerSection(name) == section then
+			if addon:getPlayerSection(name) == section.key then
 				if keystone and keystone.hasKeystone then
 					if not labelShown then
 						tooltip:AddLine(' ')
-						-- For some reason I cannot figure out, this results in red text in the tooltip
-						-- tooltip:AddLine(gsub(section, '^%l', string.upper))
-						tooltip:AddLine(label)
+						tooltip:AddLine(section.label)
 						labelShown = true
 					end
 					tooltip:AddDoubleLine(addon:renderKeystoneLink(keystone), playerLink(name))
