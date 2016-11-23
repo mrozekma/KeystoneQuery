@@ -438,6 +438,14 @@ function addon:OnInitialize()
 			end
 		elseif cmd == 'refresh' then
 			addon:refresh()
+		elseif cmd == 'clear' then
+			for k, _ in pairs(addon.myKeystones) do
+				addon.myKeystones[k] = nil
+			end
+			for k, _ in pairs(addon.keystones) do
+				addon.keystones[k] = nil
+			end
+			addon:refresh()
 		elseif cmd == 'dump' then
 			print("KeystoneQuery table dump:")
 			for name, keystone in table.pairsByKeys(self.keystones) do
