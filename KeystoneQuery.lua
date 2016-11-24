@@ -1,4 +1,4 @@
-local addon = LibStub("AceAddon-3.0"):NewAddon("KeystoneQuery", "AceBucket-3.0", "AceEvent-3.0", "AceSerializer-3.0", "AceTimer-3.0")
+local addon = LibStub("AceAddon-3.0"):NewAddon("KeystoneQuery", "AceBucket-3.0", "AceComm-3.0", "AceEvent-3.0", "AceSerializer-3.0", "AceTimer-3.0")
 local ldb = LibStub:GetLibrary("LibDataBroker-1.1")
 local libCompress = LibStub:GetLibrary("LibCompress")
 
@@ -59,7 +59,11 @@ function addon:setMyKeystone()
 	-- The best way I could find was to scan the player's bags until a keystone is found, and then rip the info out of the item link
 	-- The bag to scan is provided by the ITEM_PUSH event; otherwise we scan all of them
 	for bag = 0, NUM_BAG_SLOTS do
-		for slot = 1, GetContainerNumSlots(bag) do
+		local numSlots = GetContainerNumSlots(bag)
+		if numSlots == 0 then
+			return nil, nil
+		end
+		for slot = 1, numSlots do
 			if(GetContainerItemID(bag, slot) == MYTHIC_KEYSTONE_ID) then
 				originalLink = GetContainerItemLink(bag, slot)
 				self:log("Player's keystone: %s -- %s", originalLink, gsub(originalLink, '|', '!'))
@@ -98,9 +102,11 @@ function addon:setMyKeystone()
 				end
 				local lootEligible = (tonumber(parts[17 + numAffixes]) == 1)
 				
-				local rtn = {dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible, upgradeTypeID = upgradeTypeID}
-				self.myKeystones[name] = rtn
-				return rtn
+				local newKeystone = {dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible, upgradeTypeID = upgradeTypeID}
+				local oldKeystone = self.myKeystones[name]
+				local changed = (oldKeystone == nil or oldKeystone.keystoneLevel ~= newKeystone.keystoneLevel)
+				self.myKeystones[name] = newKeystone
+				return newKeystone, changed
 			end
 		end
 	end
@@ -125,7 +131,7 @@ function addon:getMyKeystone()
 	local name = nameWithRealm(UnitName('player'))
 	local rtn = self.myKeystones[name]
 	if not rtn then
-		rtn = self:setMyKeystone()
+		rtn, _ = self:setMyKeystone()
 	end
 	return rtn
 end
@@ -241,18 +247,31 @@ end
 
 function addon:sendKeystones(type, target)
 	for name, keystone in pairs(self.myKeystones) do
-		SendAddonMessage(ADDON_PREFIX, 'keystone4:' .. self:networkEncode({name = name, keystone = keystone}), type, target)
+		SendAddonMessage(ADDON_PREFIX, 'keystone4:' .. self:networkEncode({name = name, keystone = keystone, v5support = true}), type, target)
 	end
+	self:SendCommMessage(ADDON_PREFIX .. '2', 'keystone5:' .. self:networkEncode(self.myKeystones), type, target)
 end
 
 function addon:onAddonMsg(event, prefix, msg, channel, sender)
-	if prefix ~= ADDON_PREFIX then return end
-	
+	if prefix == ADDON_PREFIX  then
+		self:receiveMessage(msg, channel, sender)
+	end
+end
+
+function addon:onAceCommMsg(prefix, msg, channel, sender)
+	if prefix == ADDON_PREFIX .. '2' then
+		self:receiveMessage(msg, channel, sender)
+	end
+end
+
+function addon:receiveMessage(msg, channel, sender)
 	-- Addon message format:
 	-- v1: keystone1:dungeonID:keystoneLevel:affixID,affixID,affixID:lootEligible
 	-- v2: keystone2:(Table serialized/compressed/encoded with Ace3)
 	--   Table keys: dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID
 	-- v3: keystone3:(Table mapping player-realm name to v2 keystone table)
+	-- v4: Went back to v2
+	-- v5: v3 but over the AceComm channel
 
 	-- A request for this user's keystone info
 
@@ -279,8 +298,8 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 		return
 	end
 	
-	if msg == 'keystone4?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
-		self:log('Received keystone v4 request from ' .. sender)
+	if msg == 'keystone4?' or msg == 'keystone5?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
+		self:log('Received keystone v%s request from %s', strsub(msg, 9, 9), sender)
 		self:sendKeystones('WHISPER', sender)
 		return
 	end
@@ -336,6 +355,10 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 		self:log('Received keystone v4 response from ' .. sender)
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
 		local name = data.name
+		if data.v5support then
+			self:log('  Sender supports v5, ignoring the v4 message')
+			return
+		end
 		self:log('  Keystone data for ' .. name)
 		--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
 		self.keystones[name] = data.keystone
@@ -344,17 +367,35 @@ function addon:onAddonMsg(event, prefix, msg, channel, sender)
 		self.keystones[name].recordTime = time()
 		return
 	end
+	
+	prefix = 'keystone5:'
+	if string.starts(msg, prefix) then
+		self:log('Received keystone v5 response from ' .. sender)
+		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
+		for name, keystone in pairs(data) do
+			--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
+			self.keystones[name] = keystone
+			self.keystones[name].hasKeystone = true
+			self.keystones[name].isAlt = (name ~= sender)
+			self.keystones[name].recordTime = time()
+		end
+		return
+	end
 		
 	if not self.showedOutOfDateMessage then
 		self.showedOutOfDateMessage = true
 		print('Keystone Query: Unrecognized message received from another user. Is this version out of date?')
-		self:log("From " .. sender .. ": " .. msg)
+		self:log("From %s: %s", sender, msg)
 	end
 end
 
-function addon:onItemPush(eventName, bag, icon)
-	-- 'bag' doesn't appear to be the bag number like I thought, so just scanning them all
-	self:setMyKeystone()
+function addon:onBagUpdate()
+	self:log('onBagUpdate')
+	local _, changed = self:setMyKeystone()
+	if changed then
+		self:log('Broadcast new keystone')
+		self:broadcast()
+	end
 end
 
 function addon:startTimers()
@@ -397,6 +438,7 @@ function addon:broadcast()
 end
 
 function addon:OnInitialize()
+	self:log('Initializing')
 	self.keystones = {}
 	self.broadcastTimer = nil
 	self.showedOutOfDateMessage = false
@@ -407,18 +449,20 @@ function addon:OnInitialize()
 	self.db = LibStub('AceDB-3.0'):New('KeystoneQueryDB', {factionrealm = dbDefaults}, true).factionrealm
 	self.myKeystones = self.db.keystones
 
-	self:RegisterEvent('CHAT_MSG_ADDON', 'onAddonMsg')
-	self:RegisterBucketEvent('ITEM_PUSH', 2, 'onItemPush')
+	self:RegisterBucketEvent('BAG_UPDATE', 2, 'onBagUpdate')
 	--TODO Call setMyKeystone() when item is destroyed; not sure which event that is
 	self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'PARTY_MEMBERS_CHANGED', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
+	
+	self:RegisterEvent('CHAT_MSG_ADDON', 'onAddonMsg')
 	RegisterAddonMessagePrefix(ADDON_PREFIX)
+	self:RegisterComm(ADDON_PREFIX .. '2', 'onAceCommMsg')
 	
 	self:setMyKeystone()
-
+	
 	SLASH_KeystoneQuery1 = '/keystone?'
 	SLASH_KeystoneQuery2 = '/key?'
 	SlashCmdList['KeystoneQuery'] = function(cmd)
-		-- Default looks up party if in one, else guild
+		-- Default looks up party (if in one) and guild
 		if cmd == '' then
 			self:showKeystones(nil, false)
 		elseif cmd == 'party' or cmd == 'p' then
@@ -448,7 +492,7 @@ function addon:OnInitialize()
 		elseif cmd == 'dump' then
 			print("KeystoneQuery table dump:")
 			for name, keystone in table.pairsByKeys(self.keystones) do
-				printf(name)
+				print(name)
 				printf("  section: %s", self:getPlayerSection(name))
 				if not keystone.hasKeystone then
 					printf("  (no keystone)")
