@@ -47,7 +47,6 @@ end
 
 --TODO Detect new keystone on dungeon finish
 --TODO Keystone voting
---TODO Move alt keystones under mains instead of in their own section
 
 function addon:setMyKeystone()
 	self:log("Scanning for player's keystone")
@@ -212,22 +211,44 @@ end
 
 --TODO Everything assumes the player is in a guild; handle when they're not
 function addon:showKeystones(type, showNones)
-	local sections = type and {type} or {'party', 'friend', 'guild', 'alt'}
+	local sections = type and {type} or {'party', 'friend', 'guild'}
 	for _, section in ipairs(sections) do
 		local labelShown = false
 		for name, keystone in table.pairsByKeys(self.keystones) do
 			if self:getPlayerSection(name) == section then
-				if showNones or (keystone and keystone.hasKeystone) then
-					if not labelShown then
-						printf("|T%s:16|t %s keystones:", ICON, gsub(section, '^%l', string.upper))
-						labelShown = true
-					end
-					if keystone == nil then
-						printf("%s's keystone is unknown", self:playerLink(name))
-					elseif not keystone.hasKeystone then
-						printf("%s has no keystone", self:playerLink(name))
+				if not keystone.isAlt then
+					-- If not showNones, this player needs to either have a keystone or have an alt with a keystone
+					local printThis = showNones
+					if keystone and keystone.hasKeystone then
+						printThis = true
 					else
-						printf("%s has %s", self:playerLink(name), self:renderKeystoneLink(keystone))
+						for alt, _ in table.pairsByKeys(self.alts[name]) do
+							local altKeystone = self.keystones[alt]
+							if altKeystone and altKeystone.hasKeystone then
+								printThis = true
+							end
+						end
+					end
+					if printThis then
+						if not labelShown then
+							printf("|T%s:16|t %s keystones:", ICON, gsub(section, '^%l', string.upper))
+							labelShown = true
+						end
+						if keystone == nil then
+							printf("%s's keystone is unknown", self:playerLink(name))
+						elseif not keystone.hasKeystone then
+							printf("%s has no keystone", self:playerLink(name))
+						else
+							printf("%s has %s", self:playerLink(name), self:renderKeystoneLink(keystone))
+						end
+						
+						if self.alts[name] then
+							for alt, _ in table.pairsByKeys(self.alts[name]) do
+								if self.keystones[alt] and self.keystones[alt].hasKeystone then
+									printf("    %s has %s", self:playerLink(alt), self:renderKeystoneLink(self.keystones[alt]))
+								end
+							end
+						end
 					end
 				end
 			end
@@ -377,6 +398,16 @@ function addon:receiveMessage(msg, channel, sender)
 		self.keystones[name].hasKeystone = true
 		self.keystones[name].isAlt = (name ~= sender)
 		self.keystones[name].recordTime = time()
+		if self.keystones[name].isAlt then
+			if not self.keystones[sender] then
+				self.keystones[sender] = {hasKeystone = false}
+			end
+			if not self.alts[sender] then
+				self.alts[sender] = {}
+			end
+			self.alts[sender][name] = true
+			self.alts[name] = nil -- If the user was logged into this alt before
+		end
 		return
 	end
 	
@@ -393,6 +424,16 @@ function addon:receiveMessage(msg, channel, sender)
 			self.keystones[name].hasKeystone = true
 			self.keystones[name].isAlt = (name ~= sender)
 			self.keystones[name].recordTime = time()
+			if self.keystones[name].isAlt then
+				if not self.keystones[sender] then
+					self.keystones[sender] = {hasKeystone = false}
+				end
+				if not self.alts[sender] then
+					self.alts[sender] = {}
+				end
+				self.alts[sender][name] = true
+				self.alts[name] = nil -- If the user was logged into this alt before
+			end
 		end
 		return
 	end
@@ -471,6 +512,7 @@ function addon:OnInitialize()
 	self:log('Initializing')
 	self.guids = {}
 	self.keystones = {}
+	self.alts = {}
 	self.broadcastTimer = nil
 	self.showedOutOfDateMessage = false
 	
@@ -519,7 +561,7 @@ function addon:OnInitialize()
 		elseif cmd == 'refresh' then
 			addon:refresh()
 		elseif cmd == 'clear' then
-			for _, tbl in ipairs({addon.myGuids, addon.guids, addon.myKeystones, addon.keystones}) do
+			for _, tbl in ipairs({addon.myGuids, addon.guids, addon.myKeystones, addon.keystones, addon.alts}) do
 				for k, _ in pairs(tbl) do
 					tbl[k] = nil
 				end
@@ -546,6 +588,15 @@ function addon:OnInitialize()
 					printf("      isAlt: %s", keystone.isAlt and 'true' or 'false')
 					printf("      recordTime: %d", keystone.recordTime)
 				end
+			end
+			print("  alts:")
+			for name, alts in table.pairsByKeys(self.alts) do
+				local vals = {}
+				for alt, _ in pairs(alts) do
+					tinsert(vals, alt)
+				end
+				table.sort(vals)
+				printf("    %s: %s", name, table.concat(vals, ', '))
 			end
 		elseif cmd == 'debug off' then
 			debugMode = false
@@ -576,19 +627,37 @@ ldbSource.OnTooltipShow = function(tooltip)
 		{key = 'party', label = 'Party'},
 		{key = 'friend', label = 'Friends'},
 		{key = 'guild', label = 'Guild'},
-		{key = 'alt', label = 'Alts'},
 	}
 	for _, section in ipairs(sections) do
 		local labelShown = false
 		for name, keystone in table.pairsByKeys(addon.keystones) do
 			if addon:getPlayerSection(name) == section.key then
-				if keystone and keystone.hasKeystone then
+				-- Only print if this player or one of their alts has a keystone
+				local printThis = (keystone and keystone.hasKeystone)
+				if not printThis then
+					for alt, _ in table.pairsByKeys(addon.alts[name] or {}) do
+						if addon.keystones[alt] and addon.keystones[alt].hasKeystone then
+							printThis = true
+						end
+					end
+				end
+				if printThis then
 					if not labelShown then
 						tooltip:AddLine(' ')
 						tooltip:AddLine(section.label)
 						labelShown = true
 					end
-					tooltip:AddDoubleLine(addon:renderKeystoneLink(keystone), addon:playerLink(name))
+					if keystone and keystone.hasKeystone then
+						tooltip:AddDoubleLine(addon:renderKeystoneLink(keystone), addon:playerLink(name))
+					else
+						tooltip:AddDoubleLine('|TInterface\\Icons\\Achievement_PVP_A_A:16|t None', addon:playerLink(name))
+					end
+					for alt, _ in table.pairsByKeys(addon.alts[name] or {}) do
+						local keystone = addon.keystones[alt]
+						if keystone and keystone.hasKeystone then
+							tooltip:AddDoubleLine('     ' .. addon:renderKeystoneLink(keystone), addon:playerLink(alt))
+						end
+					end
 				end
 			end
 		end
