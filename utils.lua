@@ -29,10 +29,6 @@ function table.flip(table)
 	return rtn
 end
 
-function playerLink(player)
-	return format('|Hplayer:%s:0|h%s|h', player, gsub(player, format("-%s$", GetRealmName()), ''))
-end
-
 function nameWithRealm(player)
 	if strfind(player, '-') then
 		return player

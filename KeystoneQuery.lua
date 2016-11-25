@@ -48,11 +48,20 @@ end
 --TODO Detect new keystone on dungeon finish
 --TODO Keystone voting
 --TODO Move alt keystones under mains instead of in their own section
---TODO Color names based on class
 
 function addon:setMyKeystone()
 	self:log("Scanning for player's keystone")
 	local name = nameWithRealm(UnitName('player'))
+	
+	-- We also try and set the player's GUID here because it's not always available when OnInitialize runs
+	if not self.myGuids[name] then
+		local guid = UnitGUID('player')
+		if guid then
+			self.myGuids[name] = guid
+			self.guids[name] = guid
+		end
+	end
+	
 	-- GetItemInfo() returns generic info, not info about the player's particular keystone
 	-- name, link, quality, iLevel, reqLevel, class, subclass, maxStack, equipSlot, texture, vendorPrice = GetItemInfo(MYTHIC_KEYSTONE_ID)
 	
@@ -214,11 +223,11 @@ function addon:showKeystones(type, showNones)
 						labelShown = true
 					end
 					if keystone == nil then
-						printf("%s's keystone is unknown", playerLink(name))
+						printf("%s's keystone is unknown", self:playerLink(name))
 					elseif not keystone.hasKeystone then
-						printf("%s has no keystone", playerLink(name))
+						printf("%s has no keystone", self:playerLink(name))
 					else
-						printf("%s has %s", playerLink(name), self:renderKeystoneLink(keystone))
+						printf("%s has %s", self:playerLink(name), self:renderKeystoneLink(keystone))
 					end
 				end
 			end
@@ -249,7 +258,7 @@ function addon:sendKeystones(type, target)
 	for name, keystone in pairs(self.myKeystones) do
 		SendAddonMessage(ADDON_PREFIX, 'keystone4:' .. self:networkEncode({name = name, keystone = keystone, v5support = true}), type, target)
 	end
-	self:SendCommMessage(ADDON_PREFIX .. '2', 'keystone5:' .. self:networkEncode(self.myKeystones), type, target)
+	self:SendCommMessage(ADDON_PREFIX .. '2', 'keystone5:' .. self:networkEncode({guids = self.myGuids, keystones = self.myKeystones}), type, target)
 end
 
 function addon:onAddonMsg(event, prefix, msg, channel, sender)
@@ -271,8 +280,11 @@ function addon:receiveMessage(msg, channel, sender)
 	--   Table keys: dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID
 	-- v3: keystone3:(Table mapping player-realm name to v2 keystone table)
 	-- v4: Went back to v2
-	-- v5: v3 but over the AceComm channel
+	-- v5: keystone5:(Table serialized/compressed/encoded with Ace3, sent via AceComm)
+	--   Table: 'guid' -> {name -> guid}, 'keystones' -> {name -> keystone}, keystone is the same as v2
 
+	sender = nameWithRealm(sender)
+	
 	-- A request for this user's keystone info
 
 	if msg == 'keystone1?' then
@@ -372,8 +384,11 @@ function addon:receiveMessage(msg, channel, sender)
 	if string.starts(msg, prefix) then
 		self:log('Received keystone v5 response from ' .. sender)
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
-		for name, keystone in pairs(data) do
-			--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
+		--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
+		for name, guid in pairs(data.guids) do
+			self.guids[name] = guid
+		end
+		for name, keystone in pairs(data.keystones) do
 			self.keystones[name] = keystone
 			self.keystones[name].hasKeystone = true
 			self.keystones[name].isAlt = (name ~= sender)
@@ -404,6 +419,21 @@ function addon:startTimers()
 	end
 	self.broadcastTimer = self:ScheduleRepeatingTimer('broadcast', BROADCAST_RATE)
 	self:broadcast()
+end
+
+function addon:playerLink(player)
+	local guid = self.guids[nameWithRealm(player)]
+	local rendered = gsub(player, format("-%s$", GetRealmName()), '')
+	if guid then
+		local class, _, _, _, _, _, _ = GetPlayerInfoByGUID(guid)
+		if class then
+			local color = RAID_CLASS_COLORS[string.upper(class)]
+			if color then
+				rendered = format("|c%s%s|r", color.colorStr, rendered)
+			end
+		end
+	end
+	return format('|Hplayer:%s:0|h%s|h', player, rendered)
 end
 
 function addon:refresh()
@@ -439,15 +469,22 @@ end
 
 function addon:OnInitialize()
 	self:log('Initializing')
+	self.guids = {}
 	self.keystones = {}
 	self.broadcastTimer = nil
 	self.showedOutOfDateMessage = false
 	
 	local dbDefaults = {
-		keystones = {}
+		guids = {},
+		keystones = {},
 	}
 	self.db = LibStub('AceDB-3.0'):New('KeystoneQueryDB', {factionrealm = dbDefaults}, true).factionrealm
+	self.myGuids = self.db.guids
 	self.myKeystones = self.db.keystones
+
+	for name, guid in pairs(self.myGuids) do
+		self.guids[name] = guid
+	end
 
 	self:RegisterBucketEvent('BAG_UPDATE', 2, 'onBagUpdate')
 	--TODO Call setMyKeystone() when item is destroyed; not sure which event that is
@@ -482,28 +519,32 @@ function addon:OnInitialize()
 		elseif cmd == 'refresh' then
 			addon:refresh()
 		elseif cmd == 'clear' then
-			for k, _ in pairs(addon.myKeystones) do
-				addon.myKeystones[k] = nil
-			end
-			for k, _ in pairs(addon.keystones) do
-				addon.keystones[k] = nil
+			for _, tbl in ipairs({addon.myGuids, addon.guids, addon.myKeystones, addon.keystones}) do
+				for k, _ in pairs(tbl) do
+					tbl[k] = nil
+				end
 			end
 			addon:refresh()
 		elseif cmd == 'dump' then
 			print("KeystoneQuery table dump:")
+			print("  guids:")
+			for name, guid in table.pairsByKeys(self.guids) do
+				printf("    %s: %s", name, guid)
+			end
+			print("  keystones:")
 			for name, keystone in table.pairsByKeys(self.keystones) do
-				print(name)
-				printf("  section: %s", self:getPlayerSection(name))
+				printf("    %s", name)
+				printf("      section: %s", self:getPlayerSection(name))
 				if not keystone.hasKeystone then
-					printf("  (no keystone)")
+					printf("      (no keystone)")
 				else
-					printf("  dungeonID: %d", keystone.dungeonID)
-					printf("  keystoneLevel: %d", keystone.keystoneLevel)
-					printf("  affixIDs: %s", table.concat(keystone.affixIDs, '/'))
-					printf("  lootEligible: %s", keystone.lootEligible and 'true' or 'false')
-					printf("  upgradeTypeID: %d", keystone.upgradeTypeID)
-					printf("  isAlt: %s", keystone.isAlt and 'true' or 'false')
-					printf("  recordTime: %d", keystone.recordTime)
+					printf("      dungeonID: %d", keystone.dungeonID)
+					printf("      keystoneLevel: %d", keystone.keystoneLevel)
+					printf("      affixIDs: %s", table.concat(keystone.affixIDs, '/'))
+					printf("      lootEligible: %s", keystone.lootEligible and 'true' or 'false')
+					printf("      upgradeTypeID: %d", keystone.upgradeTypeID)
+					printf("      isAlt: %s", keystone.isAlt and 'true' or 'false')
+					printf("      recordTime: %d", keystone.recordTime)
 				end
 			end
 		elseif cmd == 'debug off' then
@@ -547,7 +588,7 @@ ldbSource.OnTooltipShow = function(tooltip)
 						tooltip:AddLine(section.label)
 						labelShown = true
 					end
-					tooltip:AddDoubleLine(addon:renderKeystoneLink(keystone), playerLink(name))
+					tooltip:AddDoubleLine(addon:renderKeystoneLink(keystone), addon:playerLink(name))
 				end
 			end
 		end
