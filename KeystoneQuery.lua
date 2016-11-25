@@ -45,9 +45,6 @@ function addon:log(fmt, ...)
 	end
 end
 
---TODO Detect new keystone on dungeon finish
---TODO Keystone voting
-
 function addon:setMyKeystone()
 	self:log("Scanning for player's keystone")
 	local name = nameWithRealm(UnitName('player'))
@@ -394,6 +391,7 @@ function addon:receiveMessage(msg, channel, sender)
 		end
 		self:log('  Keystone data for ' .. name)
 		--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
+		self:onNewKeystone(name, data.keystone)
 		self.keystones[name] = data.keystone
 		self.keystones[name].hasKeystone = true
 		self.keystones[name].isAlt = (name ~= sender)
@@ -420,6 +418,7 @@ function addon:receiveMessage(msg, channel, sender)
 			self.guids[name] = guid
 		end
 		for name, keystone in pairs(data.keystones) do
+			self:onNewKeystone(name, keystone)
 			self.keystones[name] = keystone
 			self.keystones[name].hasKeystone = true
 			self.keystones[name].isAlt = (name ~= sender)
@@ -442,6 +441,18 @@ function addon:receiveMessage(msg, channel, sender)
 		self.showedOutOfDateMessage = true
 		print('Keystone Query: Unrecognized message received from another user. Is this version out of date?')
 		self:log("From %s: %s", sender, msg)
+	end
+end
+
+function addon:onNewKeystone(name, newKeystone)
+	if self:getPlayerSection(name) == 'party' then
+		local oldKeystone = self.keystones[name]
+		if not oldKeystone or not oldKeystone.hasKeystone then
+			oldKeystone = self.oldKeystones[name]
+		end
+		if not oldKeystone or not oldKeystone.hasKeystone or oldKeystone.keystoneLevel ~= newKeystone.keystoneLevel then
+			printf("%s has a new keystone: %s", self:playerLink(name), self:renderKeystoneLink(newKeystone))
+		end
 	end
 end
 
@@ -479,6 +490,9 @@ end
 
 function addon:refresh()
 	self:log("Refreshing keystone list")
+	for name, keystone in pairs(self.keystones) do
+		self.oldKeystones[name] = keystone
+	end
 	self.keystones = {}
 	SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'PARTY')
 	SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'GUILD')
@@ -513,6 +527,7 @@ function addon:OnInitialize()
 	self.guids = {}
 	self.keystones = {}
 	self.alts = {}
+	self.oldKeystones = {}
 	self.broadcastTimer = nil
 	self.showedOutOfDateMessage = false
 	
