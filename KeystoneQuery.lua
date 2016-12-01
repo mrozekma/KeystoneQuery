@@ -495,9 +495,9 @@ function addon:playerLink(player)
 	local guid = self.guids[nameWithRealm(player)]
 	local rendered = gsub(player, format("-%s$", GetRealmName()), '')
 	if guid then
-		local class, _, _, _, _, _, _ = GetPlayerInfoByGUID(guid)
+		local _, class, _, _, _, _, _ = GetPlayerInfoByGUID(guid)
 		if class then
-			local color = RAID_CLASS_COLORS[string.upper(class)]
+			local color = RAID_CLASS_COLORS[class]
 			if color then
 				rendered = format("|c%s%s|r", color.colorStr, rendered)
 			end
