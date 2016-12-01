@@ -2,6 +2,7 @@ local addon = LibStub("AceAddon-3.0"):NewAddon("KeystoneQuery", "AceBucket-3.0",
 local ldb = LibStub:GetLibrary("LibDataBroker-1.1")
 local libCompress = LibStub:GetLibrary("LibCompress")
 
+local version = GetAddOnMetadata('KeystoneQuery', 'Version')
 local debugMode = false
 
 local MYTHIC_KEYSTONE_ID = 138019
@@ -258,15 +259,18 @@ function addon:networkEncode(data)
 end
 
 function addon:networkDecode(data)
+	local originalData = data
 	local data = libCompress:GetAddonEncodeTable():Decode(data)
 	local data, err = libCompress:Decompress(data)
 	if not data then
 		print("Keystone Query: Failed to decompress network data: " .. err)
+		self:log(originalData)
 		return
 	end
 	local success, data = self:Deserialize(data)
 	if not success then
 		print("Keystone Query: Failed to deserialize network data")
+		self:log(originalData)
 		return
 	end
 	return data
@@ -276,7 +280,7 @@ function addon:sendKeystones(type, target)
 	for name, keystone in pairs(self.myKeystones) do
 		SendAddonMessage(ADDON_PREFIX, 'keystone4:' .. self:networkEncode({name = name, keystone = keystone, v5support = true}), type, target)
 	end
-	self:SendCommMessage(ADDON_PREFIX .. '2', 'keystone5:' .. self:networkEncode({guids = self.myGuids, keystones = self.myKeystones}), type, target)
+	self:SendCommMessage(ADDON_PREFIX .. '2', 'keystone5:' .. self:networkEncode({version = version, guids = self.myGuids, keystones = self.myKeystones}), type, target)
 end
 
 function addon:onAddonMsg(event, prefix, msg, channel, sender)
@@ -338,6 +342,7 @@ function addon:receiveMessage(msg, channel, sender)
 	local prefix = 'keystone1:'
 	if string.starts(msg, prefix) then
 		self:log('Received keystone v1 response from ' .. sender)
+		self.versions[sender] = '? (v1)'
 		local _, dungeonID, keystoneLevel, affixIDs, lootEligible = strsplit(':', msg)
 		if tonumber(dungeonID) == 0 then
 			self.keystones[sender] = {hasKeystone = false}
@@ -356,6 +361,7 @@ function addon:receiveMessage(msg, channel, sender)
 	prefix = 'keystone2:'
 	if string.starts(msg, prefix) then
 		self:log('Received keystone v2 response from ' .. sender)
+		self.versions[sender] = '? (v2)'
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
 		self.keystones[sender] = data
 		self.keystones[sender].hasKeystone = true
@@ -366,6 +372,7 @@ function addon:receiveMessage(msg, channel, sender)
 	prefix = 'keystone3:'
 	if string.starts(msg, prefix) then
 		self:log('Received keystone v3 response from ' .. sender)
+		self.versions[sender] = '? (v3)'
 		self:log('Ignoring')
 		--[[
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
@@ -383,7 +390,11 @@ function addon:receiveMessage(msg, channel, sender)
 	prefix = 'keystone4:'
 	if string.starts(msg, prefix) then
 		self:log('Received keystone v4 response from ' .. sender)
+		self.versions[sender] = '? (v4)'
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
+		if not data then
+			return
+		end
 		local name = data.name
 		if data.v5support then
 			self:log('  Sender supports v5, ignoring the v4 message')
@@ -412,8 +423,15 @@ function addon:receiveMessage(msg, channel, sender)
 	prefix = 'keystone5:'
 	if string.starts(msg, prefix) then
 		self:log('Received keystone v5 response from ' .. sender)
+		self.versions[sender] = '? (v5)'
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
+		if not data then
+			return
+		end
 		--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
+		if data.version then
+			self.versions[sender] = data.version .. ' (v5)'
+		end
 		for name, guid in pairs(data.guids) do
 			self.guids[name] = guid
 		end
@@ -524,10 +542,14 @@ end
 
 function addon:OnInitialize()
 	self:log('Initializing')
+	
 	self.guids = {}
 	self.keystones = {}
+
+	self.versions = {}
 	self.alts = {}
 	self.oldKeystones = {}
+
 	self.broadcastTimer = nil
 	self.showedOutOfDateMessage = false
 	
@@ -576,7 +598,7 @@ function addon:OnInitialize()
 		elseif cmd == 'refresh' then
 			addon:refresh()
 		elseif cmd == 'clear' then
-			for _, tbl in ipairs({addon.myGuids, addon.guids, addon.myKeystones, addon.keystones, addon.alts}) do
+			for _, tbl in ipairs({addon.myGuids, addon.guids, addon.myKeystones, addon.keystones, addon.alts, addon.versions}) do
 				for k, _ in pairs(tbl) do
 					tbl[k] = nil
 				end
@@ -584,6 +606,10 @@ function addon:OnInitialize()
 			addon:refresh()
 		elseif cmd == 'dump' then
 			print("KeystoneQuery table dump:")
+			print("  versions:")
+			for name, version in table.pairsByKeys(self.versions) do
+				printf("    %s: %s", name, version)
+			end
 			print("  guids:")
 			for name, guid in table.pairsByKeys(self.guids) do
 				printf("    %s: %s", name, guid)
