@@ -112,6 +112,7 @@ function addon:setMyKeystone()
 				local oldKeystone = self.myKeystones[name]
 				local changed = (oldKeystone == nil or oldKeystone.keystoneLevel ~= newKeystone.keystoneLevel)
 				self.myKeystones[name] = newKeystone
+				self.myKeystoneOriginalLink = originalLink
 				return newKeystone, changed
 			end
 		end
@@ -131,6 +132,7 @@ function addon:setMyKeystone()
 	else
 		self.myKeystones[nameWithRealm(UnitName('player'))] = nil
 	end
+	self.myKeystoneOriginalLink = nil
 end
 
 function addon:getMyKeystone()
@@ -142,16 +144,19 @@ function addon:getMyKeystone()
 	return rtn
 end
 
-function addon:renderKeystoneLink(keystone)
+function addon:renderKeystoneLink(keystone, formatted)
+	formatted = (formatted ~= false) -- Default to true
 	local dungeonName = C_ChallengeMode.GetMapInfo(keystone.dungeonID)
 	local numAffixes = #keystone.affixIDs
-	local linkColor = LINK_COLORS[numAffixes + 1]
-	if not keystone.lootEligible then
-		linkColor = '999999'
-	end
 	-- v1 messages don't include the upgradeTypeID; just hardcode it for now (we were making bad links before, and will continue to do so for most levels)
 	keystone.upgradeTypeID = keystone.upgradeTypeID or 45872520
-	local link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hitem:%d::::::::110:0:%d:::%d:%d:%s:%d:::|h[%s +%d]|r", keystone.keystoneLevel, linkColor, MYTHIC_KEYSTONE_ID, keystone.upgradeTypeID, keystone.dungeonID, keystone.keystoneLevel, table.concat(keystone.affixIDs, ':'), keystone.lootEligible and '1' or '0', dungeonName, keystone.keystoneLevel)
+	local link
+	if formatted then
+		local linkColor = keystone.lootEligible and LINK_COLORS[numAffixes + 1] or '999999'
+		link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hitem:%d::::::::110:0:%d:::%d:%d:%s:%d:::|h[%s +%d]|r", keystone.keystoneLevel, linkColor, MYTHIC_KEYSTONE_ID, keystone.upgradeTypeID, keystone.dungeonID, keystone.keystoneLevel, table.concat(keystone.affixIDs, ':'), keystone.lootEligible and '1' or '0', dungeonName, keystone.keystoneLevel)
+	else
+		link = format("%s +%d", dungeonName, keystone.keystoneLevel)
+	end
 	if numAffixes > 0 then
 		local affixNames = {}
 		for i, id in pairs(keystone.affixIDs) do
@@ -549,6 +554,7 @@ function addon:OnInitialize()
 	self.versions = {}
 	self.alts = {}
 	self.oldKeystones = {}
+	self.myKeystoneOriginalLink = nil
 
 	self.broadcastTimer = nil
 	self.showedOutOfDateMessage = false
@@ -711,13 +717,33 @@ ldbSource.OnTooltipShow = function(tooltip)
 	end
 end
 
--- Turns out SendChatMessage() won't take formatting :(
---[[
-local originalSendChatMessage = SendChatMessage
-function SendChatMessage(msg, ...)
-	if msg == 'keystone' or msg == 'key' then
-		msg = self:renderKeystoneLink(self:getMyKeystone())
+ldbSource.OnClick = function(frame, button)
+	if button == 'LeftButton' and IsShiftKeyDown() then
+		local editbox = DEFAULT_CHAT_FRAME.editBox
+		if editbox then
+			local link = addon:renderKeystoneLink(addon:getMyKeystone(), false)
+			if addon.myKeystoneOriginalLink then
+				link = format("%s -- %s", addon.myKeystoneOriginalLink, link)
+			end
+			editbox:Insert(link)
+			-- editbox:Show() -- This doesn't seem to work; editbox:IsShown() is always true and this does nothing if called when the box isn't up
+		end
 	end
-	return originalSendChatMessage(msg, ...)
 end
-]]
+
+hooksecurefunc("ChatEdit_OnTextChanged", function(self, userInput)
+	if userInput then
+		msg = self:GetText()
+		if strfind(msg, ':key') then
+			local link = addon:renderKeystoneLink(addon:getMyKeystone(), false)
+			if addon.myKeystoneOriginalLink then
+				link = format("%s -- %s", addon.myKeystoneOriginalLink, link)
+			end
+			-- Lua's regex support is abysmal. Not sure there's a way to do this in one replace
+			-- msg = gsub(msg, ':key(stone)?:', link)
+			msg = gsub(msg, ':key:', link)
+			msg = gsub(msg, ':keystone:', link)
+			self:SetText(msg)
+		end
+	end
+end)
