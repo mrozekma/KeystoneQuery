@@ -49,6 +49,15 @@ end
 function addon:setMyKeystone()
 	self:log("Scanning for player's keystone")
 	local name = nameWithRealm(UnitName('player'))
+
+	local setLDBText = function(keystone)
+		if keystone then
+			ldbSource.text = ' ' .. self:renderKeystoneLink(keystone)
+		else
+			ldbSource.text = ' (none)'
+		end
+	end
+	
 	
 	-- We also try and set the player's GUID here because it's not always available when OnInitialize runs
 	if not self.myGuids[name] then
@@ -113,6 +122,7 @@ function addon:setMyKeystone()
 				local changed = (oldKeystone == nil or oldKeystone.keystoneLevel ~= newKeystone.keystoneLevel)
 				self.myKeystones[name] = newKeystone
 				self.myKeystoneOriginalLink = originalLink
+				setLDBText(newKeystone)
 				return newKeystone, changed
 			end
 		end
@@ -133,6 +143,7 @@ function addon:setMyKeystone()
 		self.myKeystones[nameWithRealm(UnitName('player'))] = nil
 	end
 	self.myKeystoneOriginalLink = nil
+	setLDBText(nil)
 end
 
 function addon:getMyKeystone()
@@ -521,13 +532,6 @@ function addon:refresh()
 	SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'GUILD')
 	--TODO Send to friends
 
-	-- Update the LDB text
-	if self:getMyKeystone() then
-		ldbSource.text = ' ' .. self:renderKeystoneLink(self:getMyKeystone())
-	else
-		ldbSource.text = ' (none)'
-	end
-	
 	-- Purge old keystone entries
 	-- (at the moment we clear the whole list every time, so this isn't needed)
 	--[[
