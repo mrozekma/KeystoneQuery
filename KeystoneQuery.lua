@@ -610,40 +610,63 @@ function addon:OnInitialize()
 				end
 			end
 			addon:refresh()
-		elseif cmd == 'dump' then
+		elseif cmd == 'dump' or string.starts(cmd, 'dump ') then
+			local groups = {'versions', 'guids', 'keystones', 'alts'}
+			local groupFns = {
+				versions = function()
+					for name, version in table.pairsByKeys(self.versions) do
+						printf("    %s: %s", name, version)
+					end
+				end,
+				guids = function()
+					for name, guid in table.pairsByKeys(self.guids) do
+						printf("    %s: %s", name, guid)
+					end
+				end,
+				keystones = function()
+					for name, keystone in table.pairsByKeys(self.keystones) do
+						printf("    %s", name)
+						printf("      section: %s", self:getPlayerSection(name))
+						if not keystone.hasKeystone then
+							printf("      (no keystone)")
+						else
+							printf("      dungeonID: %d", keystone.dungeonID)
+							printf("      keystoneLevel: %d", keystone.keystoneLevel)
+							printf("      affixIDs: %s", table.concat(keystone.affixIDs, '/'))
+							printf("      lootEligible: %s", keystone.lootEligible and 'true' or 'false')
+							printf("      upgradeTypeID: %d", keystone.upgradeTypeID)
+							printf("      isAlt: %s", keystone.isAlt and 'true' or 'false')
+							printf("      recordTime: %d", keystone.recordTime)
+						end
+					end
+				end,
+				alts = function()
+					for name, alts in table.pairsByKeys(self.alts) do
+						local vals = {}
+						for alt, _ in pairs(alts) do
+							tinsert(vals, alt)
+						end
+						table.sort(vals)
+						printf("    %s: %s", name, table.concat(vals, ', '))
+					end
+				end
+			}
+			
 			print("KeystoneQuery table dump:")
-			print("  versions:")
-			for name, version in table.pairsByKeys(self.versions) do
-				printf("    %s: %s", name, version)
-			end
-			print("  guids:")
-			for name, guid in table.pairsByKeys(self.guids) do
-				printf("    %s: %s", name, guid)
-			end
-			print("  keystones:")
-			for name, keystone in table.pairsByKeys(self.keystones) do
-				printf("    %s", name)
-				printf("      section: %s", self:getPlayerSection(name))
-				if not keystone.hasKeystone then
-					printf("      (no keystone)")
+			local groupName = strsub(cmd, 6)
+			if groupName == '' then
+				for _, groupName in pairs(groups) do
+					printf("  %s:", groupName)
+					groupFns[groupName]()
+				end
+			else
+				local fn = groupFns[groupName]
+				if fn then
+					printf("  %s:", groupName)
+					fn()
 				else
-					printf("      dungeonID: %d", keystone.dungeonID)
-					printf("      keystoneLevel: %d", keystone.keystoneLevel)
-					printf("      affixIDs: %s", table.concat(keystone.affixIDs, '/'))
-					printf("      lootEligible: %s", keystone.lootEligible and 'true' or 'false')
-					printf("      upgradeTypeID: %d", keystone.upgradeTypeID)
-					printf("      isAlt: %s", keystone.isAlt and 'true' or 'false')
-					printf("      recordTime: %d", keystone.recordTime)
+					printf("KeystoneQuery: Unknown dump group: %s", groupName)
 				end
-			end
-			print("  alts:")
-			for name, alts in table.pairsByKeys(self.alts) do
-				local vals = {}
-				for alt, _ in pairs(alts) do
-					tinsert(vals, alt)
-				end
-				table.sort(vals)
-				printf("    %s: %s", name, table.concat(vals, ', '))
 			end
 		elseif cmd == 'debug off' then
 			debugMode = false
@@ -652,7 +675,7 @@ function addon:OnInitialize()
 			debugMode = true
 			print("KeystoneQuery: debug mode enabled")
 		else
-			--TODO
+			print("KeystoneQuery: unknown command")
 		end
 	end
 end
