@@ -1,0 +1,23 @@
+------------------------------------------------------------------------
+r76 | galmok | 2016-11-06 13:11:54 +0000 (Sun, 06 Nov 2016) | 1 line
+Changed paths:
+   A /tags/r76-release (from /trunk:75)
+
+Tagging as r76-release
+------------------------------------------------------------------------
+r75 | galmok | 2016-11-06 13:02:36 +0000 (Sun, 06 Nov 2016) | 2 lines
+Changed paths:
+   M /trunk/LibCompress.lua
+
+Fixed: CompressLZW performed bad compressions due to Lua's non-existant integers. Rewrote to remove the multiplication (one less source of error using doubles as integers).
+
+------------------------------------------------------------------------
+r74 | galmok | 2016-11-06 10:11:20 +0000 (Sun, 06 Nov 2016) | 3 lines
+Changed paths:
+   M /trunk/LibCompress.lua
+   M /trunk/LibCompress.toc
+
+Fixed: During compression, bit overflow could happen.
+Fixed: Updated to latest WoW version.
+
+------------------------------------------------------------------------
