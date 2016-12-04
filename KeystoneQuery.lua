@@ -717,14 +717,22 @@ ldbSource.OnTooltipShow = function(tooltip)
 	end
 end
 
+local function renderKeystoneForChat(keystone)
+	if not keystone then
+		return 'no keystone'
+	end
+	local link = addon:renderKeystoneLink(keystone, false)
+	if addon.myKeystoneOriginalLink then
+		link = format("%s -- %s", addon.myKeystoneOriginalLink, link)
+	end
+	return link
+end
+
 ldbSource.OnClick = function(frame, button)
 	if button == 'LeftButton' and IsShiftKeyDown() then
 		local editbox = DEFAULT_CHAT_FRAME.editBox
 		if editbox then
-			local link = addon:renderKeystoneLink(addon:getMyKeystone(), false)
-			if addon.myKeystoneOriginalLink then
-				link = format("%s -- %s", addon.myKeystoneOriginalLink, link)
-			end
+			local link = renderKeystoneForChat(addon:getMyKeystone())
 			editbox:Insert(link)
 			-- editbox:Show() -- This doesn't seem to work; editbox:IsShown() is always true and this does nothing if called when the box isn't up
 		end
@@ -735,10 +743,7 @@ hooksecurefunc("ChatEdit_OnTextChanged", function(self, userInput)
 	if userInput then
 		msg = self:GetText()
 		if strfind(msg, ':key') then
-			local link = addon:renderKeystoneLink(addon:getMyKeystone(), false)
-			if addon.myKeystoneOriginalLink then
-				link = format("%s -- %s", addon.myKeystoneOriginalLink, link)
-			end
+			local link = renderKeystoneForChat(addon:getMyKeystone())
 			-- Lua's regex support is abysmal. Not sure there's a way to do this in one replace
 			-- msg = gsub(msg, ':key(stone)?:', link)
 			msg = gsub(msg, ':key:', link)
