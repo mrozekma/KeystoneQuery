@@ -450,6 +450,7 @@ function addon:receiveMessage(msg, channel, sender)
 		end
 		for name, guid in pairs(data.guids) do
 			self.guids[name] = guid
+			GetPlayerInfoByGUID(guid)
 		end
 		for name, keystone in pairs(data.keystones) do
 			self:onNewKeystone(name, keystone)
