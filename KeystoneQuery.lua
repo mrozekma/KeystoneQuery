@@ -771,11 +771,23 @@ hooksecurefunc("ChatEdit_OnTextChanged", function(self, userInput)
 	if userInput then
 		msg = self:GetText()
 		if strfind(msg, ':key') then
+			-- Replace :key: and :keystone: with a semi-detailed version of this player's keystone
 			local link = renderKeystoneForChat(addon:getMyKeystone())
 			-- Lua's regex support is abysmal. Not sure there's a way to do this in one replace
 			-- msg = gsub(msg, ':key(stone)?:', link)
 			msg = gsub(msg, ':key:', link)
 			msg = gsub(msg, ':keystone:', link)
+			
+			-- Replace :keys: and :keystones: with a very simple ("Dungeon +level") list of this account's keystones including alts
+			local links = {}
+			for name, keystone in table.pairsByKeys(addon.myKeystones) do
+				local dungeonName = C_ChallengeMode.GetMapInfo(keystone.dungeonID)
+				tinsert(links, format("%s has %s +%d", Ambiguate(name, 'short'), dungeonName, keystone.keystoneLevel))
+			end
+			links = table.concat(links, ', ')
+			msg = gsub(msg, ':keys:', links)
+			msg = gsub(msg, ':keystones:', links)
+			
 			self:SetText(msg)
 		end
 	end
