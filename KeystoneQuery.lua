@@ -585,7 +585,7 @@ function addon:OnInitialize()
 
 	self:RegisterBucketEvent('BAG_UPDATE', 2, 'onBagUpdate')
 	--TODO Call setMyKeystone() when item is destroyed; not sure which event that is
-	self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'PARTY_MEMBERS_CHANGED', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
+	self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'GROUP_ROSTER_UPDATE', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
 	
 	self:RegisterEvent('CHAT_MSG_ADDON', 'onAddonMsg')
 	RegisterAddonMessagePrefix(ADDON_PREFIX)
