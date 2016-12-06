@@ -223,7 +223,6 @@ function addon:getPlayerSection(seek)
 	return 'guild'
 end
 
---TODO Everything assumes the player is in a guild; handle when they're not
 function addon:showKeystones(type, showNones)
 	local sections = type and {type} or {'party', 'friend', 'guild'}
 	for _, section in ipairs(sections) do
@@ -529,8 +528,12 @@ function addon:refresh()
 		self.oldKeystones[name] = keystone
 	end
 	self.keystones = {}
-	SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'PARTY')
-	SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'GUILD')
+	if UnitInParty('player') then
+		SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'PARTY')
+	end
+	if GetGuildInfo('player') then
+		SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'GUILD')
+	end
 	--TODO Send to friends
 
 	-- Purge old keystone entries
@@ -545,8 +548,12 @@ function addon:refresh()
 end
 
 function addon:broadcast()
-	self:sendKeystones('PARTY')
-	self:sendKeystones('GUILD')
+	if UnitInParty('player') then
+		self:sendKeystones('PARTY')
+	end
+	if GetGuildInfo('player') then
+		self:sendKeystones('GUILD')
+	end
 	--TODO Send to friends
 end
 
@@ -600,7 +607,11 @@ function addon:OnInitialize()
 			end
 --		elseif cmd == 'friends' or cmd == 'f' then
 		elseif cmd == 'guild' or cmd == 'g' or cmd == '' then
-			self:showKeystones('guild', false)
+			if GetGuildInfo('player') then
+				self:showKeystones('guild', false)
+			else
+				print("Not in a guild")
+			end
 		elseif cmd == 'affix' or cmd == 'affixes' then
 			printf("|T%s:16|t Affixes:", ICON)
 			for _, text in pairs(self:renderAffixes()) do
