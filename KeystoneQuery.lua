@@ -528,7 +528,7 @@ function addon:refresh()
 		self.oldKeystones[name] = keystone
 	end
 	self.keystones = {}
-	if UnitInParty('player') then
+	if IsInGroup(LE_PARTY_CATEGORY_HOME) then
 		SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'PARTY')
 	end
 	if GetGuildInfo('player') then
@@ -548,7 +548,7 @@ function addon:refresh()
 end
 
 function addon:broadcast()
-	if UnitInParty('player') then
+	if IsInGroup(LE_PARTY_CATEGORY_HOME) then
 		self:sendKeystones('PARTY')
 	end
 	if GetGuildInfo('player') then
@@ -600,7 +600,7 @@ function addon:OnInitialize()
 		if cmd == '' then
 			self:showKeystones(nil, false)
 		elseif cmd == 'party' or cmd == 'p' then
-			if UnitInParty('player') then
+			if IsInGroup(LE_PARTY_CATEGORY_HOME) then
 				self:showKeystones('party', true)
 			else
 				print("Not in a party")
