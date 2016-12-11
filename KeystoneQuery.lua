@@ -1,6 +1,7 @@
 local addon = LibStub("AceAddon-3.0"):NewAddon("KeystoneQuery", "AceBucket-3.0", "AceComm-3.0", "AceEvent-3.0", "AceSerializer-3.0", "AceTimer-3.0")
 local ldb = LibStub:GetLibrary("LibDataBroker-1.1")
 local libCompress = LibStub:GetLibrary("LibCompress")
+local AceGUI = LibStub:GetLibrary("AceGUI-3.0")
 
 local version = GetAddOnMetadata('KeystoneQuery', 'Version')
 local debugMode = false
@@ -41,8 +42,13 @@ local ldbSource = LibStub("LibDataBroker-1.1"):NewDataObject("KeystoneQuery", {
 })
 
 function addon:log(fmt, ...)
-	if(debugMode) then
-		printf("KeystoneQuery: " .. fmt, ...)
+	if debugMode then
+		txt = format(fmt, ...)
+		if self.logFrame and self.logFrame:IsShown() then
+			self:logFrameAppend(txt)
+		else
+			print("KeystoneQuery: " .. txt)
+		end
 	end
 end
 
@@ -135,10 +141,7 @@ function addon:setMyKeystone()
 	local oldKeystone = self.myKeystones[name]
 	if oldKeystone then
 		self:log('Expected a keystone -- assuming weekly reset and clearing alt keystone list')
-		-- self.myKeystones is an alias for a field in self.db, so we can't just do self.myKeystones = {}
-		for k, _ in pairs(self.myKeystones) do
-			self.myKeystones[k] = nil
-		end
+		wipe(self.myKeystones)
 	else
 		self.myKeystones[nameWithRealm(UnitName('player'))] = nil
 	end
@@ -292,6 +295,7 @@ function addon:networkDecode(data)
 end
 
 function addon:sendKeystones(type, target)
+	self:log("Sending keystones to %s %s", type, target or '')
 	for name, keystone in pairs(self.myKeystones) do
 		SendAddonMessage(ADDON_PREFIX, 'keystone4:' .. self:networkEncode({name = name, keystone = keystone, v5support = true}), type, target)
 	end
@@ -452,6 +456,7 @@ function addon:receiveMessage(msg, channel, sender)
 			GetPlayerInfoByGUID(guid)
 		end
 		for name, keystone in pairs(data.keystones) do
+			self:log('  Keystone for %s', name)
 			self:onNewKeystone(name, keystone)
 			self.keystones[name] = keystone
 			self.keystones[name].hasKeystone = true
@@ -559,7 +564,63 @@ end
 
 function addon:OnInitialize()
 	self:log('Initializing')
-	
+	do
+		self.logFrame = AceGUI:Create('Frame')
+		self.logFrame.AceGUIWidgetVersion = 0 -- We mess with the frame's internals, so make it impossible for AceGUI to put it back in the object pool (not that we ever intend to release it anyway)
+		if not debugMode then
+			self.logFrame:Hide()
+		end
+		self.logFrame:SetTitle('Keystone Query - Debug Log')
+		self.logFrame:SetPoint('TOPLEFT', 30, -150)
+		self.logFrame:SetLayout('Flow')
+		self.logFrame.frame:SetFrameStrata('LOW')
+
+		local scrollContainer = AceGUI:Create('SimpleGroup')
+		self.logFrame:AddChild(scrollContainer)
+		scrollContainer:SetFullWidth(true)
+		scrollContainer:SetFullHeight(true)
+		scrollContainer:SetLayout('Fill')
+
+		local logContent = AceGUI:Create('ScrollFrame')
+		scrollContainer:AddChild(logContent)
+		logContent:SetLayout('Flow')
+		
+		-- Get rid of the status bar
+		self.logFrame.statustext:GetParent():Hide()
+
+		-- Add buttons next to the close button
+		local clearButton = CreateFrame('Button', nil, self.logFrame.frame, 'UIPanelButtonTemplate')
+		clearButton:SetText('Clear')
+		clearButton:SetScript('OnClick', function()
+			logContent:ReleaseChildren()
+		end)
+		local markButton = CreateFrame('Button', nil, self.logFrame.frame, 'UIPanelButtonTemplate')
+		markButton:SetText('Mark')
+		markButton:SetScript('OnClick', function()
+			local marker = AceGUI:Create('Icon')
+			marker:SetImage('Interface\\Icons\\Ability_Hunter_MarkedForDeath')
+			marker:SetImageSize(16, 16)
+			marker:SetWidth(24)
+			marker:SetHeight(24)
+			logContent:AddChild(marker)
+		end)
+		-- The close button is at -27, 17
+		local x, y = -27, 17
+		for _, button in ipairs({clearButton, markButton}) do
+			button:SetHeight(20)
+			button:SetWidth(100)
+			x = x - button:GetWidth()
+			button:SetPoint('BOTTOMRIGHT', x, y)
+		end
+		
+		self.logFrameAppend = function(_, txt)
+			local l = AceGUI:Create('Label')
+			l:SetText(format("|cffaaaaaa[%s]|r %s", date('%H:%M:%S'), txt))
+			l:SetFullWidth(true)
+			logContent:AddChild(l)
+		end
+	end
+
 	self.guids = {}
 	self.keystones = {}
 
@@ -621,9 +682,7 @@ function addon:OnInitialize()
 			addon:refresh()
 		elseif cmd == 'clear' then
 			for _, tbl in ipairs({addon.myGuids, addon.guids, addon.myKeystones, addon.keystones, addon.alts, addon.versions}) do
-				for k, _ in pairs(tbl) do
-					tbl[k] = nil
-				end
+				wipe(tbl)
 			end
 			addon:refresh()
 		elseif cmd == 'dump' or string.starts(cmd, 'dump ') then
@@ -686,10 +745,18 @@ function addon:OnInitialize()
 			end
 		elseif cmd == 'debug off' then
 			debugMode = false
+			addon.logFrame:Hide()
 			print("KeystoneQuery: debug mode disabled")
 		elseif cmd == 'debug on' then
 			debugMode = true
 			print("KeystoneQuery: debug mode enabled")
+		elseif cmd == 'debug log' then
+			if addon.logFrame:IsShown() then
+				addon.logFrame:Hide()
+			else
+				addon.logFrame:Show()
+				debugMode = true
+			end
 		else
 			print("KeystoneQuery: unknown command")
 		end
