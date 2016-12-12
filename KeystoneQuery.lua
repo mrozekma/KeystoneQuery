@@ -41,9 +41,16 @@ local ldbSource = LibStub("LibDataBroker-1.1"):NewDataObject("KeystoneQuery", {
 	title = "Keystone",
 })
 
+if LibDebug and debugMode then
+	-- LibDebug replaces print(), which I don't want
+	local realPrint = print
+	LibDebug()
+	getfenv(1).print = realPrint
+end
+
 function addon:log(fmt, ...)
 	if debugMode then
-		txt = format(fmt, ...)
+		local txt = format(fmt, ...)
 		if self.logFrame and self.logFrame:IsShown() then
 			self:logFrameAppend(txt)
 		else
@@ -86,9 +93,9 @@ function addon:setMyKeystone()
 		end
 		for slot = 1, numSlots do
 			if(GetContainerItemID(bag, slot) == MYTHIC_KEYSTONE_ID) then
-				originalLink = GetContainerItemLink(bag, slot)
+				local originalLink = GetContainerItemLink(bag, slot)
 				self:log("Player's keystone: %s -- %s", originalLink, gsub(originalLink, '|', '!'))
-				parts = { strsplit(':', originalLink) }
+				local parts = { strsplit(':', originalLink) }
 				
 				--[[
 				Thanks to http://wow.gamepedia.com/ItemString for the [Mythic Keystone] link format:
@@ -174,7 +181,7 @@ function addon:renderKeystoneLink(keystone, formatted)
 	if numAffixes > 0 then
 		local affixNames = {}
 		for i, id in pairs(keystone.affixIDs) do
-			affixName, affixDesc = C_ChallengeMode.GetAffixInfo(id)
+			local affixName, affixDesc = C_ChallengeMode.GetAffixInfo(id)
 			tinsert(affixNames, strlower(affixName))
 		end
 		link = format("%s (%s)", link, table.concat(affixNames, '/'))
@@ -654,8 +661,8 @@ function addon:OnInitialize()
 	
 	self:setMyKeystone()
 	
-	SLASH_KeystoneQuery1 = '/keystone?'
-	SLASH_KeystoneQuery2 = '/key?'
+	_G.SLASH_KeystoneQuery1 = '/keystone?'
+	_G.SLASH_KeystoneQuery2 = '/key?'
 	SlashCmdList['KeystoneQuery'] = function(cmd)
 		-- Default looks up party (if in one) and guild
 		if cmd == '' then
@@ -847,7 +854,7 @@ end
 
 hooksecurefunc("ChatEdit_OnTextChanged", function(self, userInput)
 	if userInput then
-		msg = self:GetText()
+		local msg = self:GetText()
 		if strfind(msg, ':key') then
 			-- Replace :key: and :keystone: with a semi-detailed version of this player's keystone
 			local link = renderKeystoneForChat(addon:getMyKeystone())

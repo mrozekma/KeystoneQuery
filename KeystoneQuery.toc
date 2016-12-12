@@ -3,6 +3,7 @@
 ## Author: Michael Mrozek
 ## Notes: An addon to find out which Mythic+ keystones your friends have for the week
 ## Version: 2.7
+## OptionalDeps: LibDebug
 ## SavedVariables: KeystoneQueryDB
 
 libs\Ace3\CallbackHandler-1.0\CallbackHandler-1.0.lua
