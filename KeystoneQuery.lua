@@ -653,7 +653,50 @@ function addon:OnInitialize()
 
 	self:RegisterBucketEvent('BAG_UPDATE', 2, 'onBagUpdate')
 	--TODO Call setMyKeystone() when item is destroyed; not sure which event that is
-	self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'GROUP_ROSTER_UPDATE', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
+	
+	-- Need to special-case GROUP_ROSTER_UPDATE, so can't use RegisterBucketEvent
+	--TODO Do I need to call GuildRoster() myself if GUILD_ROSTER_UPDATE hasn't happened in a while?
+	-- self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'GROUP_ROSTER_UPDATE', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
+	do
+		local refreshTimer = nil
+		local function startRefreshTimer()
+			self:log('  started the refresh timer')
+			refreshTimer = self:ScheduleTimer(function()
+				refreshTimer = nil
+				self:refresh()
+			end, 2)
+		end
+		--TODO FRIENDLIST_UPDATE might have the same problem as GUILD_ROSTER_UPDATE; haven't seen an issue with it triggering continuously, but that might just be because no installed addons request it
+		for _, eventName in pairs({'FRIENDLIST_UPDATE', 'GROUP_ROSTER_UPDATE', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}) do
+			self:RegisterEvent(eventName, function()
+				self:log('Event: %s', eventName)
+				if refreshTimer == nil then
+					startRefreshTimer()
+				end
+			end)
+		end
+		local guildList = {}
+		self:RegisterEvent('GUILD_ROSTER_UPDATE', function()
+			self:log('Event: GUILD_ROSTER_UPDATE')
+			local num = GetNumGuildMembers()
+			local newGuildList = {}
+			local hasNew = false
+			for i = 1, num do
+				local name, _, _, _, _, _, _, _, online, _, _, _, _, _, _, _ = GetGuildRosterInfo(i)
+				if online then
+					if not guildList[name] then
+						self:log('  found new guildmate online: %s', name)
+						hasNew = true
+					end
+					newGuildList[name] = true
+				end
+			end
+			guildList = newGuildList
+			if hasNew and not refreshTimer then
+				startRefreshTimer()
+			end
+		end)
+	end
 	
 	self:RegisterEvent('CHAT_MSG_ADDON', 'onAddonMsg')
 	RegisterAddonMessagePrefix(ADDON_PREFIX)
