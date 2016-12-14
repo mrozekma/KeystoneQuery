@@ -9,7 +9,7 @@ local debugMode = false
 local MYTHIC_KEYSTONE_ID = 138019
 local BROADCAST_RATE = (debugMode and 1 or 15) * 60 -- seconds
 local ICON = 'Interface\\Icons\\INV_Relics_Hourglass'
-local ADDON_PREFIX = 'KeystoneQuery'
+local ADDON_PREFIX = 'KeystoneQuery2'
 local LINK_COLORS = {'00ff00', 'ffff00', 'ff0000', 'a335ee'} -- Index is number of affixes + 1 on the keystone (thanks Lua for your brilliant 1-indexing)
 
 -- http://www.wowhead.com/mythic-keystones-and-dungeons-guide#loot
@@ -303,150 +303,32 @@ end
 
 function addon:sendKeystones(type, target)
 	self:log("Sending keystones to %s %s", type, target or '')
-	for name, keystone in pairs(self.myKeystones) do
-		SendAddonMessage(ADDON_PREFIX, 'keystone4:' .. self:networkEncode({name = name, keystone = keystone, v5support = true}), type, target)
-	end
-	self:SendCommMessage(ADDON_PREFIX .. '2', 'keystone5:' .. self:networkEncode({version = version, guids = self.myGuids, keystones = self.myKeystones}), type, target)
-end
-
-function addon:onAddonMsg(event, prefix, msg, channel, sender)
-	if prefix == ADDON_PREFIX  then
-		self:receiveMessage(msg, channel, sender)
-	end
+	self:SendCommMessage(ADDON_PREFIX, 'keystone5:' .. self:networkEncode({version = version, guids = self.myGuids, keystones = self.myKeystones}), type, target)
 end
 
 function addon:onAceCommMsg(prefix, msg, channel, sender)
-	if prefix == ADDON_PREFIX .. '2' then
+	if prefix == ADDON_PREFIX then
 		self:receiveMessage(msg, channel, sender)
 	end
 end
 
 function addon:receiveMessage(msg, channel, sender)
-	-- Addon message format:
-	-- v1: keystone1:dungeonID:keystoneLevel:affixID,affixID,affixID:lootEligible
-	-- v2: keystone2:(Table serialized/compressed/encoded with Ace3)
-	--   Table keys: dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID
-	-- v3: keystone3:(Table mapping player-realm name to v2 keystone table)
-	-- v4: Went back to v2
+	-- Addon message format (v1-v4 are no longer supported):
 	-- v5: keystone5:(Table serialized/compressed/encoded with Ace3, sent via AceComm)
-	--   Table: 'guid' -> {name -> guid}, 'keystones' -> {name -> keystone}, keystone is the same as v2
+	--   Table: 'guid' -> {name -> guid}, 'keystones' -> {name -> keystone}
+	--     Keystone table keys: dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID
 
 	sender = nameWithRealm(sender)
 	
 	-- A request for this user's keystone info
-
-	if msg == 'keystone1?' then
-		self:log('Received keystone v1 request from ' .. sender)
-		local keystone = self:getMyKeystone()
-		SendAddonMessage(ADDON_PREFIX, format("keystone1:%d:%d:%s:%d", keystone and keystone.dungeonID or 0, keystone and keystone.keystoneLevel or 0, keystone and table.concat(keystone.affixIDs, ',') or '', (keystone and keystone.lootEligible) and 1 or 0), "WHISPER", sender)
-		return
-	end
-	
-	-- No released version ever requested v2 keystones, so this shouldn't be necessary
-	--[[
-	if msg == 'keystone2?' then
-		self:log('Received keystone v2 request from ' .. sender)
-		SendAddonMessage(ADDON_PREFIX, 'keystone2:' .. self:encodeMyKeystone(), "WHISPER", sender)
-		return
-	end
-	]]
-
-	-- v3 encodings are broken, but don't want to remove them in case a client requests them. Instead return empty data
-	if msg == 'keystone3?' then
-		self:log('Received keystone v3 request from ' .. sender)
-		SendAddonMessage(ADDON_PREFIX, 'keystone3:' .. self:networkEncode(nil), "WHISPER", sender)
-		return
-	end
-	
-	if msg == 'keystone4?' or msg == 'keystone5?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
+	if msg == 'keystone5?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
 		self:log('Received keystone v%s request from %s', strsub(msg, 9, 9), sender)
 		self:sendKeystones('WHISPER', sender)
 		return
 	end
-	
-	-- Another user's keystone info (which we may or may not have asked for, but print either way)
-	local prefix = 'keystone1:'
-	if string.starts(msg, prefix) then
-		self:log('Received keystone v1 response from ' .. sender)
-		self.versions[sender] = '? (v1)'
-		local _, dungeonID, keystoneLevel, affixIDs, lootEligible = strsplit(':', msg)
-		if tonumber(dungeonID) == 0 then
-			self.keystones[sender] = {hasKeystone = false}
-		else
-			local affixIDs = { strsplit(',', affixIDs) }
-			for k, v in pairs(affixIDs) do
-				affixIDs[k] = tonumber(v)
-			end
-			self.keystones[sender] = {hasKeystone = true, dungeonID = tonumber(dungeonID), keystoneLevel = tonumber(keystoneLevel), affixIDs = affixIDs, lootEligible = (lootEligible == '1')}
-		end
-		return
-	end
 
-	-- No released version ever sent v2 keystones, so this shouldn't be necessary
-	--[[
-	prefix = 'keystone2:'
-	if string.starts(msg, prefix) then
-		self:log('Received keystone v2 response from ' .. sender)
-		self.versions[sender] = '? (v2)'
-		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
-		self.keystones[sender] = data
-		self.keystones[sender].hasKeystone = true
-		return
-	end
-	]]
-
-	prefix = 'keystone3:'
-	if string.starts(msg, prefix) then
-		self:log('Received keystone v3 response from ' .. sender)
-		self.versions[sender] = '? (v3)'
-		self:log('Ignoring')
-		--[[
-		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
-		for name, keystone in pairs(data) do
-			--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
-			self.keystones[name] = keystone
-			self.keystones[name].hasKeystone = true
-			self.keystones[name].isAlt = (name ~= sender)
-			self.keystones[name].recordTime = time()
-		end
-		]]
-		return
-	end
-
-	prefix = 'keystone4:'
-	if string.starts(msg, prefix) then
-		self:log('Received keystone v4 response from ' .. sender)
-		self.versions[sender] = '? (v4)'
-		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
-		if not data then
-			return
-		end
-		local name = data.name
-		if data.v5support then
-			self:log('  Sender supports v5, ignoring the v4 message')
-			return
-		end
-		self:log('  Keystone data for ' .. name)
-		--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
-		self:onNewKeystone(name, data.keystone)
-		self.keystones[name] = data.keystone
-		self.keystones[name].hasKeystone = true
-		self.keystones[name].isAlt = (name ~= sender)
-		self.keystones[name].recordTime = time()
-		if self.keystones[name].isAlt then
-			if not self.keystones[sender] then
-				self.keystones[sender] = {hasKeystone = false}
-			end
-			if not self.alts[sender] then
-				self.alts[sender] = {}
-			end
-			self.alts[sender][name] = true
-			self.alts[name] = nil -- If the user was logged into this alt before
-		end
-		return
-	end
-	
-	prefix = 'keystone5:'
+	-- Another user's keystone info
+	local prefix = 'keystone5:'
 	if string.starts(msg, prefix) then
 		self:log('Received keystone v5 response from ' .. sender)
 		self.versions[sender] = '? (v5)'
@@ -541,10 +423,10 @@ function addon:refresh()
 	end
 	self.keystones = {}
 	if IsInGroup(LE_PARTY_CATEGORY_HOME) then
-		SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'PARTY')
+		self:SendCommMessage(ADDON_PREFIX, 'keystone5?', 'PARTY')
 	end
 	if GetGuildInfo('player') then
-		SendAddonMessage(ADDON_PREFIX, 'keystone4?', 'GUILD')
+		self:SendCommMessage(ADDON_PREFIX, 'keystone5?', 'GUILD')
 	end
 	--TODO Send to friends
 
@@ -698,9 +580,7 @@ function addon:OnInitialize()
 		end)
 	end
 	
-	self:RegisterEvent('CHAT_MSG_ADDON', 'onAddonMsg')
-	RegisterAddonMessagePrefix(ADDON_PREFIX)
-	self:RegisterComm(ADDON_PREFIX .. '2', 'onAceCommMsg')
+	self:RegisterComm(ADDON_PREFIX, 'onAceCommMsg')
 	
 	self:setMyKeystone()
 	
