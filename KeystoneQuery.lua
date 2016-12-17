@@ -8,6 +8,7 @@ local debugMode = false
 
 local MYTHIC_KEYSTONE_ID = 138019
 local BROADCAST_RATE = (debugMode and 1 or 15) * 60 -- seconds
+local REFRESH_PURGE_DELAY = 5 -- seconds
 local ICON = 'Interface\\Icons\\INV_Relics_Hourglass'
 local ADDON_PREFIX = 'KeystoneQuery2'
 local LINK_COLORS = {'00ff00', 'ffff00', 'ff0000', 'a335ee'} -- Index is number of affixes + 1 on the keystone (thanks Lua for your brilliant 1-indexing)
@@ -57,6 +58,10 @@ function addon:log(fmt, ...)
 			print("KeystoneQuery: " .. txt)
 		end
 	end
+end
+
+function addon:debug(fmt, ...)
+	self:log("|TInterface\\Icons\\INV_Bijou_Red:16|t %s", format(fmt, ...))
 end
 
 function addon:setMyKeystone()
@@ -418,10 +423,11 @@ end
 
 function addon:refresh()
 	self:log("Refreshing keystone list")
+	local now = time()
+
 	for name, keystone in pairs(self.keystones) do
 		self.oldKeystones[name] = keystone
 	end
-	self.keystones = {}
 	if IsInGroup(LE_PARTY_CATEGORY_HOME) then
 		self:SendCommMessage(ADDON_PREFIX, 'keystone5?', 'PARTY')
 	end
@@ -430,15 +436,26 @@ function addon:refresh()
 	end
 	--TODO Send to friends
 
-	-- Purge old keystone entries
-	-- (at the moment we clear the whole list every time, so this isn't needed)
-	--[[
-	for name, keystone in pairs(self.keystones) do
-		if keystone.recordTime > BROADCAST_RATE * 2 then
-			self.keystones[name] = nil
+	-- Wait a little while, then purge old keystone entries that haven't received an update
+	self:ScheduleTimer(function(refreshTime)
+		for name, keystone in pairs(self.keystones) do
+			local keep = false
+			if keystone.hasKeystone then
+				keep = (keystone.recordTime >= refreshTime)
+			else
+				-- Keep if any alts have a keystone we're going to keep
+				for alt, _ in pairs(self.alts[name] or {}) do
+					if self.keystones[alt] and self.keystones[alt].hasKeystone and self.keystones[alt].recordTime >= refreshTime then
+						keep = true
+					end
+				end
+			end
+			if not keep then
+				self:log("Purging old keystone (%s, %d < %d)", name, keystone.recordTime, refreshTime)
+				self.keystones[name] = nil
+			end
 		end
-	end
-	]]
+	end, REFRESH_PURGE_DELAY, now)
 end
 
 function addon:broadcast()
