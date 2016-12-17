@@ -565,8 +565,32 @@ function addon:OnInitialize()
 				self:refresh()
 			end, 2)
 		end
-		--TODO FRIENDLIST_UPDATE might have the same problem as GUILD_ROSTER_UPDATE; haven't seen an issue with it triggering continuously, but that might just be because no installed addons request it
-		for _, eventName in pairs({'FRIENDLIST_UPDATE', 'GROUP_ROSTER_UPDATE', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}) do
+		local function updateOnlineList(len, getter, oldList)
+			local newList = {}
+			local changed = false
+			for i = 1, len do
+				local name, online = getter(i)
+				if online then
+					if not oldList[name] then
+						self:log('  found new player online: %s', name)
+						changed = true
+					end
+					newList[name] = true
+				elseif oldList[name] then
+					-- 'name' has signed off. Could just clear their data, but might as well request a refresh. The post-refresh cleanup will remove their entries
+					-- Ignore events for the current user (you stay connected long enough to watch yourself sign off, oddly)
+					if name ~= nameWithRealm(UnitName('player')) then
+						changed = true
+					end
+				end
+			end
+			if changed and not refreshTimer then
+				startRefreshTimer()
+			end
+			return newList
+		end
+
+		for _, eventName in ipairs({'GROUP_ROSTER_UPDATE', 'PARTY_MEMBER_ENABLE', 'BN_FRIEND_ACCOUNT_ONLINE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}) do
 			self:RegisterEvent(eventName, function()
 				self:log('Event: %s', eventName)
 				if refreshTimer == nil then
@@ -577,23 +601,18 @@ function addon:OnInitialize()
 		local guildList = {}
 		self:RegisterEvent('GUILD_ROSTER_UPDATE', function()
 			self:log('Event: GUILD_ROSTER_UPDATE')
-			local num = GetNumGuildMembers()
-			local newGuildList = {}
-			local hasNew = false
-			for i = 1, num do
+			guildList = updateOnlineList(GetNumGuildMembers(), function(i)
 				local name, _, _, _, _, _, _, _, online, _, _, _, _, _, _, _ = GetGuildRosterInfo(i)
-				if online then
-					if not guildList[name] then
-						self:log('  found new guildmate online: %s', name)
-						hasNew = true
-					end
-					newGuildList[name] = true
-				end
-			end
-			guildList = newGuildList
-			if hasNew and not refreshTimer then
-				startRefreshTimer()
-			end
+				return name, online
+			end, guildList)
+		end)
+		local friendList = {}
+		self:RegisterEvent('FRIENDLIST_UPDATE', function()
+			self:log('Event: FRIENDLIST_UPDATE')
+			friendList = updateOnlineList(GetNumFriends(), function(i)
+				local name, _, _, _, connected, _, _, _ = GetFriendInfo(i)
+				return name, connected
+			end, friendList)
 		end)
 	end
 
