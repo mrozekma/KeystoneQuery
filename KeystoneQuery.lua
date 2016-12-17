@@ -70,8 +70,8 @@ function addon:setMyKeystone()
 			ldbSource.text = ' (none)'
 		end
 	end
-	
-	
+
+
 	-- We also try and set the player's GUID here because it's not always available when OnInitialize runs
 	if not self.myGuids[name] then
 		local guid = UnitGUID('player')
@@ -80,10 +80,10 @@ function addon:setMyKeystone()
 			self.guids[name] = guid
 		end
 	end
-	
+
 	-- GetItemInfo() returns generic info, not info about the player's particular keystone
 	-- name, link, quality, iLevel, reqLevel, class, subclass, maxStack, equipSlot, texture, vendorPrice = GetItemInfo(MYTHIC_KEYSTONE_ID)
-	
+
 	-- The best way I could find was to scan the player's bags until a keystone is found, and then rip the info out of the item link
 	-- The bag to scan is provided by the ITEM_PUSH event; otherwise we scan all of them
 	for bag = 0, NUM_BAG_SLOTS do
@@ -96,7 +96,7 @@ function addon:setMyKeystone()
 				local originalLink = GetContainerItemLink(bag, slot)
 				self:log("Player's keystone: %s -- %s", originalLink, gsub(originalLink, '|', '!'))
 				local parts = { strsplit(':', originalLink) }
-				
+
 				--[[
 				Thanks to http://wow.gamepedia.com/ItemString for the [Mythic Keystone] link format:
 				1: color prefix
@@ -117,7 +117,7 @@ function addon:setMyKeystone()
 				X..Y: upgradeID (dungeonID, keystoneLevel, affixIDs..., lootEligible)
 				Y..: (numRelicIDs, relicIDs, ...)
 				]]
-				
+
 				local upgradeTypeID = tonumber(parts[12])
 				-- These don't seem right, but I don't have a pile of keystones to test with. Going to get the number of affixes from the level for now instead
 				-- numAffixes = ({[4587520] = 0, [5111808] = 1, [6160384] = 2, [4063232] = 3})[upgradeTypeID]
@@ -129,7 +129,7 @@ function addon:setMyKeystone()
 					tinsert(affixIDs, tonumber(parts[17 + i]))
 				end
 				local lootEligible = (tonumber(parts[17 + numAffixes]) == 1)
-				
+
 				local newKeystone = {dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible, upgradeTypeID = upgradeTypeID}
 				local oldKeystone = self.myKeystones[name]
 				local changed = (oldKeystone == nil or oldKeystone.keystoneLevel ~= newKeystone.keystoneLevel)
@@ -140,9 +140,9 @@ function addon:setMyKeystone()
 			end
 		end
 	end
-	
+
 	self:log('No keystone found')
-	
+
 	-- Detecting if the weekly reset has happened is surprisingly hard (even pinning down the day it happens on each realm is hard)
 	-- If we had a keystone but don't anymore, assume it was the reset and wipe myKeystones.
 	local oldKeystone = self.myKeystones[name]
@@ -204,7 +204,7 @@ function addon:renderAffixes()
 			end
 		end
 	end
-	
+
 	local rtn = {}
 	for i, affixID in pairs(affixes) do
 		local name, desc = C_ChallengeMode.GetAffixInfo(affixID)
@@ -227,9 +227,9 @@ function addon:getPlayerSection(seek)
 			if nameWithRealm(name) == seek then return 'party' end
 		end
 	end
-	
+
 	--TODO Friends
-	
+
 	return 'guild'
 end
 
@@ -264,7 +264,7 @@ function addon:showKeystones(type, showNones)
 						else
 							printf("%s has %s", self:playerLink(name), self:renderKeystoneLink(keystone))
 						end
-						
+
 						if self.alts[name] then
 							for alt, _ in table.pairsByKeys(self.alts[name]) do
 								if self.keystones[alt] and self.keystones[alt].hasKeystone then
@@ -319,7 +319,7 @@ function addon:receiveMessage(msg, channel, sender)
 	--     Keystone table keys: dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID
 
 	sender = nameWithRealm(sender)
-	
+
 	-- A request for this user's keystone info
 	if msg == 'keystone5?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
 		self:log('Received keystone v%s request from %s', strsub(msg, 9, 9), sender)
@@ -364,7 +364,7 @@ function addon:receiveMessage(msg, channel, sender)
 		end
 		return
 	end
-		
+
 	if not self.showedOutOfDateMessage then
 		self.showedOutOfDateMessage = true
 		print('Keystone Query: Unrecognized message received from another user. Is this version out of date?')
@@ -473,7 +473,7 @@ function addon:OnInitialize()
 		local logContent = AceGUI:Create('ScrollFrame')
 		scrollContainer:AddChild(logContent)
 		logContent:SetLayout('Flow')
-		
+
 		-- Get rid of the status bar
 		self.logFrame.statustext:GetParent():Hide()
 
@@ -501,7 +501,7 @@ function addon:OnInitialize()
 			x = x - button:GetWidth()
 			button:SetPoint('BOTTOMRIGHT', x, y)
 		end
-		
+
 		self.logFrameAppend = function(_, txt)
 			local l = AceGUI:Create('Label')
 			l:SetText(format("|cffaaaaaa[%s]|r %s", date('%H:%M:%S'), txt))
@@ -520,7 +520,7 @@ function addon:OnInitialize()
 
 	self.broadcastTimer = nil
 	self.showedOutOfDateMessage = false
-	
+
 	local dbDefaults = {
 		guids = {},
 		keystones = {},
@@ -535,7 +535,7 @@ function addon:OnInitialize()
 
 	self:RegisterBucketEvent('BAG_UPDATE', 2, 'onBagUpdate')
 	--TODO Call setMyKeystone() when item is destroyed; not sure which event that is
-	
+
 	-- Need to special-case GROUP_ROSTER_UPDATE, so can't use RegisterBucketEvent
 	--TODO Do I need to call GuildRoster() myself if GUILD_ROSTER_UPDATE hasn't happened in a while?
 	-- self:RegisterBucketEvent({'GUILD_ROSTER_UPDATE', 'FRIENDLIST_UPDATE', 'GROUP_ROSTER_UPDATE', 'PARTY_MEMBER_ENABLE', 'CHALLENGE_MODE_START', 'CHALLENGE_MODE_RESET', 'CHALLENGE_MODE_COMPLETED'}, 2, 'refresh')
@@ -579,11 +579,11 @@ function addon:OnInitialize()
 			end
 		end)
 	end
-	
+
 	self:RegisterComm(ADDON_PREFIX, 'onAceCommMsg')
-	
+
 	self:setMyKeystone()
-	
+
 	_G.SLASH_KeystoneQuery1 = '/keystone?'
 	_G.SLASH_KeystoneQuery2 = '/key?'
 	SlashCmdList['KeystoneQuery'] = function(cmd)
@@ -656,7 +656,7 @@ function addon:OnInitialize()
 					end
 				end
 			}
-			
+
 			print("KeystoneQuery table dump:")
 			local groupName = strsub(cmd, 6)
 			if groupName == '' then
@@ -745,9 +745,9 @@ ldbSource.OnTooltipShow = function(tooltip)
 			end
 		end
 	end
-	
+
 	tooltip:AddLine(' ')
-	
+
 	for _, text in pairs(addon:renderAffixes()) do
 		tooltip:AddLine(text, nil, nil, nil, true)
 	end
@@ -785,7 +785,7 @@ hooksecurefunc("ChatEdit_OnTextChanged", function(self, userInput)
 			-- msg = gsub(msg, ':key(stone)?:', link)
 			msg = gsub(msg, ':key:', link)
 			msg = gsub(msg, ':keystone:', link)
-			
+
 			-- Replace :keys: and :keystones: with a very simple ("Dungeon +level") list of this account's keystones including alts
 			local links = {}
 			for name, keystone in table.pairsByKeys(addon.myKeystones) do
@@ -795,7 +795,7 @@ hooksecurefunc("ChatEdit_OnTextChanged", function(self, userInput)
 			links = table.concat(links, ', ')
 			msg = gsub(msg, ':keys:', links)
 			msg = gsub(msg, ':keystones:', links)
-			
+
 			self:SetText(msg)
 		end
 	end
