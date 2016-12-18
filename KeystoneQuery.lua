@@ -480,6 +480,7 @@ function addon:OnInitialize()
 		self.logFrame:SetPoint('TOPLEFT', 30, -150)
 		self.logFrame:SetLayout('Flow')
 		self.logFrame.frame:SetFrameStrata('LOW')
+		self.logFrame:SetCallback('OnClose', function() debugMode = false end)
 
 		local scrollContainer = AceGUI:Create('SimpleGroup')
 		self.logFrame:AddChild(scrollContainer)
@@ -719,6 +720,7 @@ function addon:OnInitialize()
 		elseif cmd == 'debug log' then
 			if addon.logFrame:IsShown() then
 				addon.logFrame:Hide()
+				debugMode = false
 			else
 				addon.logFrame:Show()
 				debugMode = true
