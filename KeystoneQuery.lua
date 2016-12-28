@@ -8,7 +8,7 @@ local debugMode = false
 
 local MYTHIC_KEYSTONE_ID = 138019
 local BROADCAST_RATE = (debugMode and 1 or 15) * 60 -- seconds
-local REFRESH_PURGE_DELAY = 5 -- seconds
+local KEY_REQUEST_DELAY = 5 -- seconds
 local ICON = 'Interface\\Icons\\INV_Relics_Hourglass'
 local ADDON_PREFIX = 'KeystoneQuery2'
 local LINK_COLORS = {'00ff00', 'ffff00', 'ff0000', 'a335ee'} -- Index is number of affixes + 1 on the keystone (thanks Lua for your brilliant 1-indexing)
@@ -328,7 +328,15 @@ function addon:receiveMessage(msg, channel, sender)
 	-- A request for this user's keystone info
 	if msg == 'keystone5?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
 		self:log('Received keystone v%s request from %s', strsub(msg, 9, 9), sender)
-		self:sendKeystones('WHISPER', sender)
+		if self.replyTimers[sender] then
+			self:log('  reply already scheduled')
+		else
+			self:log('  scheduling reply')
+			self.replyTimers[sender] = self:ScheduleTimer(function()
+				self.replyTimers[sender] = nil
+				self:sendKeystones('WHISPER', sender)
+			end, KEY_REQUEST_DELAY)
+		end
 		return
 	end
 
@@ -535,6 +543,7 @@ function addon:OnInitialize()
 	self.alts = {}
 	self.oldKeystones = {}
 	self.myKeystoneOriginalLink = nil
+	self.replyTimers = {}
 
 	self.broadcastTimer = nil
 	self.showedOutOfDateMessage = false
