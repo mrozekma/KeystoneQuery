@@ -463,17 +463,39 @@ function addon:refresh()
 				self.keystones[name] = nil
 			end
 		end
-	end, REFRESH_PURGE_DELAY, now)
+	end, KEY_REQUEST_DELAY * 3, now)
 end
 
 function addon:broadcast()
+	self:log("Broadcasting keystones")
+
 	if IsInGroup(LE_PARTY_CATEGORY_HOME) then
 		self:sendKeystones('PARTY')
 	end
+
 	if GetGuildInfo('player') then
 		self:sendKeystones('GUILD')
 	end
-	--TODO Send to friends
+
+	for i = 1, GetNumFriends() do
+		local name, _, _, _, connected, _, _ = GetFriendInfo(i)
+		addon:debug("%s: %s", name, connected and 'on' or 'off')
+		if connected then
+			self:sendKeystones('WHISPER', name)
+			addon:debug("  sent")
+		end
+	end
+
+	local selfFaction = UnitFactionGroup('player')
+	for i = 1, BNGetNumFriends() do
+		local presenceID, presenceName, battleTag, isBattleTagPresence, toonName, toonID, client, isOnline, lastOnline, isAFK, isDND, messageText, noteText, isRIDFriend, broadcastTime, canSoR = BNGetFriendInfo(i)
+		if toonName then
+			local unknown, toonName, client, realmName, realmID, faction, race, class, unknown, zoneName, level, gameText, broadcastText, broadcastTime, unknown, presenceID = BNGetGameAccountInfo(toonID)
+			if faction == selfFaction then
+				self:sendKeystones('WHISPER', format("%s-%s", toonName, realmName))
+			end
+		end
+	end
 end
 
 function addon:OnInitialize()
