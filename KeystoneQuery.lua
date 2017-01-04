@@ -219,6 +219,10 @@ function addon:renderAffixes()
 end
 
 function addon:getPlayerSection(seek)
+	-- Seems silly to have a dedicated section just for yourself; we'll say the player is their own friend
+	local name = nameWithRealm(UnitName('player'))
+	if name == seek then return 'friend' end
+
 	local keystone = self.keystones[seek]
 	if keystone and keystone.isAlt then
 		return 'alt'
@@ -226,16 +230,41 @@ function addon:getPlayerSection(seek)
 
 	local party = GetHomePartyInfo()
 	if party then
-		local name = nameWithRealm(UnitName('player'))
-		if name == seek then return 'party' end
 		for _, name in pairs(party) do
 			if nameWithRealm(name) == seek then return 'party' end
 		end
 	end
 
-	--TODO Friends
+	for _, name in pairs(self:getFriendPlayerNames()) do
+		if name == seek then return 'friend' end
+	end
 
 	return 'guild'
+end
+
+function addon:getFriendPlayerNames()
+	local rtn = {}
+
+	local selfRealm = GetRealmName()
+	for i = 1, GetNumFriends() do
+		local name, _, _, _, connected, _, _ = GetFriendInfo(i)
+		if connected then
+			tinsert(rtn, format("%s-%s", name, selfRealm))
+		end
+	end
+
+	local selfFaction = UnitFactionGroup('player')
+	for i = 1, BNGetNumFriends() do
+		local presenceID, presenceName, battleTag, isBattleTagPresence, toonName, toonID, client, isOnline, lastOnline, isAFK, isDND, messageText, noteText, isRIDFriend, broadcastTime, canSoR = BNGetFriendInfo(i)
+		if toonName then
+			local unknown, toonName, client, realmName, realmID, faction, race, class, unknown, zoneName, level, gameText, broadcastText, broadcastTime, unknown, presenceID = BNGetGameAccountInfo(toonID)
+			if faction == selfFaction then
+				tinsert(rtn, format("%s-%s", toonName, realmName))
+			end
+		end
+	end
+
+	return rtn
 end
 
 function addon:showKeystones(type, showNones)
@@ -442,7 +471,9 @@ function addon:refresh()
 	if GetGuildInfo('player') then
 		self:SendCommMessage(ADDON_PREFIX, 'keystone5?', 'GUILD')
 	end
-	--TODO Send to friends
+	for _, name in pairs(self:getFriendPlayerNames()) do
+		self:SendCommMessage(ADDON_PREFIX, 'keystone5?', 'WHISPER', name)
+	end
 
 	-- Wait a little while, then purge old keystone entries that haven't received an update
 	self:ScheduleTimer(function(refreshTime)
@@ -477,24 +508,8 @@ function addon:broadcast()
 		self:sendKeystones('GUILD')
 	end
 
-	for i = 1, GetNumFriends() do
-		local name, _, _, _, connected, _, _ = GetFriendInfo(i)
-		addon:debug("%s: %s", name, connected and 'on' or 'off')
-		if connected then
-			self:sendKeystones('WHISPER', name)
-			addon:debug("  sent")
-		end
-	end
-
-	local selfFaction = UnitFactionGroup('player')
-	for i = 1, BNGetNumFriends() do
-		local presenceID, presenceName, battleTag, isBattleTagPresence, toonName, toonID, client, isOnline, lastOnline, isAFK, isDND, messageText, noteText, isRIDFriend, broadcastTime, canSoR = BNGetFriendInfo(i)
-		if toonName then
-			local unknown, toonName, client, realmName, realmID, faction, race, class, unknown, zoneName, level, gameText, broadcastText, broadcastTime, unknown, presenceID = BNGetGameAccountInfo(toonID)
-			if faction == selfFaction then
-				self:sendKeystones('WHISPER', format("%s-%s", toonName, realmName))
-			end
-		end
+	for _, name in pairs(self:getFriendPlayerNames()) do
+		self:sendKeystones('WHISPER', name)
 	end
 end
 
@@ -664,7 +679,8 @@ function addon:OnInitialize()
 			else
 				print("Not in a party")
 			end
---		elseif cmd == 'friends' or cmd == 'f' then
+		elseif cmd == 'friends' or cmd == 'f' then
+			self:showKeystones('friend', false)
 		elseif cmd == 'guild' or cmd == 'g' or cmd == '' then
 			if GetGuildInfo('player') then
 				self:showKeystones('guild', false)
