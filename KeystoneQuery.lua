@@ -219,16 +219,16 @@ function addon:renderAffixes()
 end
 
 function addon:getPlayerSection(seek)
-	-- Seems silly to have a dedicated section just for yourself; we'll say the player is their own friend
+	-- Seems silly to have a dedicated section just for yourself; we'll say the player is their own friend (or in their own party, if in one)
+	local party = GetHomePartyInfo()
 	local name = nameWithRealm(UnitName('player'))
-	if name == seek then return 'friend' end
+	if name == seek then return (party and 'party' or 'friend') end
 
 	local keystone = self.keystones[seek]
 	if keystone and keystone.isAlt then
 		return 'alt'
 	end
 
-	local party = GetHomePartyInfo()
 	if party then
 		for _, name in pairs(party) do
 			if nameWithRealm(name) == seek then return 'party' end
