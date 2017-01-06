@@ -248,7 +248,7 @@ function addon:getFriendPlayerNames()
 	local selfRealm = GetRealmName()
 	for i = 1, GetNumFriends() do
 		local name, _, _, _, connected, _, _ = GetFriendInfo(i)
-		if connected then
+		if name and connected then
 			tinsert(rtn, format("%s-%s", name, selfRealm))
 		end
 	end
