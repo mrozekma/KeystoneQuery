@@ -30,9 +30,6 @@ local LOOT_ILVLS = {
         865,             880,            -- 10
         870,             880,            -- 11
         870,             885,            -- 12
-        870,             885,            -- 13
-        870,             885,            -- 14
-        870,             885,            -- 15
 }
 
 local ldbSource = LibStub("LibDataBroker-1.1"):NewDataObject("KeystoneQuery", {
@@ -128,7 +125,7 @@ function addon:setMyKeystone()
 				-- numAffixes = ({[4587520] = 0, [5111808] = 1, [6160384] = 2, [4063232] = 3})[upgradeTypeID]
 				local dungeonID = tonumber(parts[15])
 				local keystoneLevel = tonumber(parts[16])
-				local numAffixes = ({0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3})[keystoneLevel]
+				local numAffixes = keystoneLevel < 4 and 0 or keystoneLevel < 7 and 1 or keystoneLevel < 10 and 2 or 3
 				local affixIDs = {}
 				for i = 0, numAffixes - 1 do
 					tinsert(affixIDs, tonumber(parts[17 + i]))
@@ -179,7 +176,7 @@ function addon:renderKeystoneLink(keystone, formatted)
 	local link
 	if formatted then
 		local linkColor = keystone.lootEligible and LINK_COLORS[numAffixes + 1] or '999999'
-		link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hitem:%d::::::::110:0:%d:::%d:%d:%s:%d:::|h[%s +%d]|r", keystone.keystoneLevel, linkColor, MYTHIC_KEYSTONE_ID, keystone.upgradeTypeID, keystone.dungeonID, keystone.keystoneLevel, table.concat(keystone.affixIDs, ':'), keystone.lootEligible and '1' or '0', dungeonName, keystone.keystoneLevel)
+		link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hitem:%d::::::::110:0:%d:::%d:%d:%s:%d:::|h[%s +%d]|r", min(keystone.keystoneLevel, 15), linkColor, MYTHIC_KEYSTONE_ID, keystone.upgradeTypeID, keystone.dungeonID, keystone.keystoneLevel, table.concat(keystone.affixIDs, ':'), keystone.lootEligible and '1' or '0', dungeonName, keystone.keystoneLevel)
 	else
 		link = format("%s +%d", dungeonName, keystone.keystoneLevel)
 	end
@@ -192,7 +189,7 @@ function addon:renderKeystoneLink(keystone, formatted)
 		link = format("%s (%s)", link, table.concat(affixNames, '/'))
 	end
 	if keystone.lootEligible then
-		link = format("%s (%d/%d)", link, LOOT_ILVLS[keystone.keystoneLevel * 2], LOOT_ILVLS[keystone.keystoneLevel * 2 + 1])
+		link = format("%s (%d/%d)", link, LOOT_ILVLS[min(keystone.keystoneLevel * 2, #LOOT_ILVLS)], LOOT_ILVLS[min(keystone.keystoneLevel * 2 + 1, #LOOT_ILVLS)])
 	else
 		link = link .. " (depleted)"
 	end
