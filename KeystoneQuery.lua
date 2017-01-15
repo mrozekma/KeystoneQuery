@@ -67,12 +67,11 @@ function addon:setMyKeystone()
 
 	local setLDBText = function(keystone)
 		if keystone then
-			ldbSource.text = ' ' .. self:renderKeystoneLink(keystone)
+			ldbSource.text = ' ' .. self:renderKeystoneLink(keystone, true, self.settings.ldbText.showAffixes, self.settings.ldbText.showLootLvls)
 		else
 			ldbSource.text = ' (none)'
 		end
 	end
-
 
 	-- We also try and set the player's GUID here because it's not always available when OnInitialize runs
 	if not self.myGuids[name] then
@@ -167,8 +166,12 @@ function addon:getMyKeystone()
 	return rtn
 end
 
-function addon:renderKeystoneLink(keystone, formatted)
-	formatted = (formatted ~= false) -- Default to true
+function addon:renderKeystoneLink(keystone, formatted, includeAffixes, includeLootLevel)
+	-- Default to true
+	formatted = (formatted ~= false)
+	includeAffixes = (includeAffixes ~= false)
+	includeLootLevel = (includeLootLevel ~= false)
+
 	local dungeonName = C_ChallengeMode.GetMapInfo(keystone.dungeonID)
 	local numAffixes = #keystone.affixIDs
 	-- v1 messages don't include the upgradeTypeID; just hardcode it for now (we were making bad links before, and will continue to do so for most levels)
@@ -180,7 +183,7 @@ function addon:renderKeystoneLink(keystone, formatted)
 	else
 		link = format("%s +%d", dungeonName, keystone.keystoneLevel)
 	end
-	if numAffixes > 0 then
+	if includeAffixes and numAffixes > 0 then
 		local affixNames = {}
 		for i, id in pairs(keystone.affixIDs) do
 			local affixName, affixDesc = C_ChallengeMode.GetAffixInfo(id)
@@ -188,10 +191,12 @@ function addon:renderKeystoneLink(keystone, formatted)
 		end
 		link = format("%s (%s)", link, table.concat(affixNames, '/'))
 	end
-	if keystone.lootEligible then
-		link = format("%s (%d/%d)", link, LOOT_ILVLS[min(keystone.keystoneLevel * 2, #LOOT_ILVLS)], LOOT_ILVLS[min(keystone.keystoneLevel * 2 + 1, #LOOT_ILVLS)])
-	else
-		link = link .. " (depleted)"
+	if includeLootLevel then
+		if keystone.lootEligible then
+			link = format("%s (%d/%d)", link, LOOT_ILVLS[min(keystone.keystoneLevel * 2, #LOOT_ILVLS)], LOOT_ILVLS[min(keystone.keystoneLevel * 2 + 1, #LOOT_ILVLS)])
+		else
+			link = link .. " (depleted)"
+		end
 	end
 	return link
 end
@@ -585,10 +590,17 @@ function addon:OnInitialize()
 	local dbDefaults = {
 		guids = {},
 		keystones = {},
+		settings = {
+			ldbText = {
+				showAffixes = true,
+				showLootLvls = true,
+			},
+		},
 	}
 	self.db = LibStub('AceDB-3.0'):New('KeystoneQueryDB', {factionrealm = dbDefaults}, true).factionrealm
 	self.myGuids = self.db.guids
 	self.myKeystones = self.db.keystones
+	self.settings = self.db.settings
 
 	for name, guid in pairs(self.myGuids) do
 		self.guids[name] = guid
@@ -846,6 +858,20 @@ local function renderKeystoneForChat(keystone)
 	return link
 end
 
+local ldbConfigMenu = CreateFrame('Frame', 'KeystoneQueryConfigMenu')
+ldbConfigMenu.displayMode = 'MENU'
+ldbConfigMenu.initialize = function(self, level)
+	local function setSetting(self, k, _, wasChecked)
+		addon.settings.ldbText[k] = not wasChecked
+		addon:setMyKeystone()
+	end
+	if level == 1 then
+		UIDropDownMenu_AddButton({text = 'Data feed text', isTitle = true}, 1)
+		UIDropDownMenu_AddButton({text = 'Show affixes', isNotRadio = true, checked = addon.settings.ldbText.showAffixes, func = setSetting, arg1 = 'showAffixes'}, 1)
+		UIDropDownMenu_AddButton({text = 'Show loot ilvls', isNotRadio = true, checked = addon.settings.ldbText.showLootLvls, func = setSetting, arg1 = 'showLootLvls'}, 1)
+	end
+end
+
 ldbSource.OnClick = function(frame, button)
 	if button == 'LeftButton' and IsShiftKeyDown() then
 		local editbox = DEFAULT_CHAT_FRAME.editBox
@@ -854,6 +880,9 @@ ldbSource.OnClick = function(frame, button)
 			editbox:Insert(link)
 			-- editbox:Show() -- This doesn't seem to work; editbox:IsShown() is always true and this does nothing if called when the box isn't up
 		end
+	elseif button == 'RightButton' then
+		GameTooltip:Hide()
+		ToggleDropDownMenu(1, nil, ldbConfigMenu, frame, 0, 0)
 	end
 end
 
