@@ -2,13 +2,13 @@
 ## Title: Keystone Query
 ## Author: Michael Mrozek
 ## Notes: An addon to find out which Mythic+ keystones your friends have for the week
-## Version: 2.9
+## Version: 2.10
 ## OptionalDeps: LibDebug
 ## SavedVariables: KeystoneQueryDB
 
 libs\Ace3\CallbackHandler-1.0\CallbackHandler-1.0.lua
 libs\Ace3\LibStub\LibStub.lua
-libs\libdatabroker-1.1\LibDataBroker-1.1.lua
+libs\libdatabroker-1-1\LibDataBroker-1.1.lua
 libs\LibCompress\lib.xml
 
 libs\Ace3\AceAddon-3.0\AceAddon-3.0.xml
