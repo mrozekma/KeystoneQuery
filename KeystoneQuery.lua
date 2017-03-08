@@ -260,7 +260,7 @@ function addon:getFriendPlayerNames()
 		local presenceID, presenceName, battleTag, isBattleTagPresence, toonName, toonID, client, isOnline, lastOnline, isAFK, isDND, messageText, noteText, isRIDFriend, broadcastTime, canSoR = BNGetFriendInfo(i)
 		if toonName then
 			local unknown, toonName, client, realmName, realmID, faction, race, class, unknown, zoneName, level, gameText, broadcastText, broadcastTime, unknown, presenceID = BNGetGameAccountInfo(toonID)
-			if faction == selfFaction then
+			if faction == selfFaction and realmName ~= "" then
 				tinsert(rtn, format("%s-%s", toonName, realmName))
 			end
 		end
@@ -597,7 +597,7 @@ function addon:OnInitialize()
 			},
 		},
 	}
-	self.db = LibStub('AceDB-3.0'):New('KeystoneQueryDB', {factionrealm = dbDefaults}, true).factionrealm
+	self.db = LibStub('AceDB-3.0'):New('KeystoneQueryDB', {faction = dbDefaults}, true).faction
 	self.myGuids = self.db.guids
 	self.myKeystones = self.db.keystones
 	self.settings = self.db.settings
