@@ -18,18 +18,18 @@ local LOOT_ILVLS = {
    nil, -- LOOT_ILVLS[keystoneLevel * 2] is dungeon chest. LOOT_ILVLS[keystoneLevel * 2 + 1] is class hall chest
 
 -- Dungeon Chest  Class Hall Chest  Keystone Level
-        840,             nil,            -- 1
-        845,             850,            -- 2
-        845,             855,            -- 3
-        850,             860,            -- 4
-        850,             865,            -- 5
-        855,             865,            -- 6
-        855,             870,            -- 7
-        860,             870,            -- 8
-        860,             875,            -- 9
-        865,             880,            -- 10
-        870,             880,            -- 11
-        870,             885,            -- 12
+        865,             nil,            -- 1
+        870,             875,            -- 2
+        870,             880,            -- 3
+        875,             885,            -- 4
+        875,             890,            -- 5
+        880,             890,            -- 6
+        880,             895,            -- 7
+        885,             895,            -- 8
+        885,             900,            -- 9
+        890,             905,            -- 10
+        890,             905,            -- 11
+        890,             905,            -- 12
 }
 
 local ldbSource = LibStub("LibDataBroker-1.1"):NewDataObject("KeystoneQuery", {
@@ -117,21 +117,26 @@ function addon:setMyKeystone()
 				15..X: bonusID
 				X..Y: upgradeID (dungeonID, keystoneLevel, affixIDs..., lootEligible)
 				Y..: (numRelicIDs, relicIDs, ...)
+				
+				NEW FORMAT:
+				-- |cffa335ee|Hkeystone:209:7:1:6:3:0|h[Keystone: The Arcway]|h|r								
+				1: Color & ItemClass
+				2: DungeonID
+				3: Keystone Level
+				4: NotDepleted
+				5... Affixes
 				]]
 
-				local upgradeTypeID = tonumber(parts[12])
-				-- These don't seem right, but I don't have a pile of keystones to test with. Going to get the number of affixes from the level for now instead
-				-- numAffixes = ({[4587520] = 0, [5111808] = 1, [6160384] = 2, [4063232] = 3})[upgradeTypeID]
-				local dungeonID = tonumber(parts[15])
-				local keystoneLevel = tonumber(parts[16])
+				local dungeonID = tonumber(parts[2])
+				local keystoneLevel = tonumber(parts[3])
 				local numAffixes = keystoneLevel < 4 and 0 or keystoneLevel < 7 and 1 or keystoneLevel < 10 and 2 or 3
 				local affixIDs = {}
 				for i = 0, numAffixes - 1 do
-					tinsert(affixIDs, tonumber(parts[17 + i]))
+					tinsert(affixIDs, tonumber(parts[5 + i]))
 				end
-				local lootEligible = (tonumber(parts[17 + numAffixes]) == 1)
+				local lootEligible = (tonumber(parts[4]) == 1)
 
-				local newKeystone = {dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible, upgradeTypeID = upgradeTypeID}
+				local newKeystone = {dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible}
 				local oldKeystone = self.myKeystones[name]
 				local changed = (oldKeystone == nil or oldKeystone.keystoneLevel ~= newKeystone.keystoneLevel)
 				self.myKeystones[name] = newKeystone
@@ -252,6 +257,7 @@ function addon:getFriendPlayerNames()
 		local name, _, _, _, connected, _, _ = GetFriendInfo(i)
 		if name and connected then
 			tinsert(rtn, format("%s-%s", name, selfRealm))
+			self:log("%s-%s", name, selfRealm)
 		end
 	end
 
@@ -260,7 +266,7 @@ function addon:getFriendPlayerNames()
 		local presenceID, presenceName, battleTag, isBattleTagPresence, toonName, toonID, client, isOnline, lastOnline, isAFK, isDND, messageText, noteText, isRIDFriend, broadcastTime, canSoR = BNGetFriendInfo(i)
 		if toonName then
 			local unknown, toonName, client, realmName, realmID, faction, race, class, unknown, zoneName, level, gameText, broadcastText, broadcastTime, unknown, presenceID = BNGetGameAccountInfo(toonID)
-			if faction == selfFaction and realmName ~= "" then
+			if faction == selfFaction and (realmName == selfRealm) then
 				tinsert(rtn, format("%s-%s", toonName, realmName))
 			end
 		end
