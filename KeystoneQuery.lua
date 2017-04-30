@@ -117,9 +117,9 @@ function addon:setMyKeystone()
 				15..X: bonusID
 				X..Y: upgradeID (dungeonID, keystoneLevel, affixIDs..., lootEligible)
 				Y..: (numRelicIDs, relicIDs, ...)
-				
+
 				NEW FORMAT:
-				-- |cffa335ee|Hkeystone:209:7:1:6:3:0|h[Keystone: The Arcway]|h|r								
+				-- |cffa335ee|Hkeystone:209:7:1:6:3:0|h[Keystone: The Arcway]|h|r
 				1: Color & ItemClass
 				2: DungeonID
 				3: Keystone Level
@@ -179,12 +179,10 @@ function addon:renderKeystoneLink(keystone, formatted, includeAffixes, includeLo
 
 	local dungeonName = C_ChallengeMode.GetMapInfo(keystone.dungeonID)
 	local numAffixes = #keystone.affixIDs
-	-- v1 messages don't include the upgradeTypeID; just hardcode it for now (we were making bad links before, and will continue to do so for most levels)
-	keystone.upgradeTypeID = keystone.upgradeTypeID or 45872520
 	local link
 	if formatted then
 		local linkColor = keystone.lootEligible and LINK_COLORS[numAffixes + 1] or '999999'
-		link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hitem:%d::::::::110:0:%d:::%d:%d:%s:%d:::|h[%s +%d]|r", min(keystone.keystoneLevel, 15), linkColor, MYTHIC_KEYSTONE_ID, keystone.upgradeTypeID, keystone.dungeonID, keystone.keystoneLevel, table.concat(keystone.affixIDs, ':'), keystone.lootEligible and '1' or '0', dungeonName, keystone.keystoneLevel)
+		link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hkeystone:%d:%d:%d:%d:%d:%d|h[%s +%d]|r", min(keystone.keystoneLevel, 15), linkColor, keystone.dungeonID, keystone.keystoneLevel, keystone.lootEligible and '1' or '0', keystone.affixIDs[1] or 0, keystone.affixIDs[2] or 0, keystone.affixIDs[3] or 0, dungeonName, keystone.keystoneLevel)
 	else
 		link = format("%s +%d", dungeonName, keystone.keystoneLevel)
 	end
@@ -345,7 +343,7 @@ end
 
 function addon:sendKeystones(type, target)
 	self:log("Sending keystones to %s %s", type, target or '')
-	self:SendCommMessage(ADDON_PREFIX, 'keystone5:' .. self:networkEncode({version = version, guids = self.myGuids, keystones = self.myKeystones}), type, target)
+	self:SendCommMessage(ADDON_PREFIX, 'keystone6:' .. self:networkEncode({version = version, guids = self.myGuids, keystones = self.myKeystones}), type, target)
 end
 
 function addon:onAceCommMsg(prefix, msg, channel, sender)
@@ -359,11 +357,13 @@ function addon:receiveMessage(msg, channel, sender)
 	-- v5: keystone5:(Table serialized/compressed/encoded with Ace3, sent via AceComm)
 	--   Table: 'guid' -> {name -> guid}, 'keystones' -> {name -> keystone}
 	--     Keystone table keys: dungeonID, keystoneLevel, affixIDs, lootEligible, upgradeTypeID
+	-- v6: Removed upgradeTypeID. Removed support for v5 since KeystoneQuery pre 2.11 is broken in 7.2 anyway
 
 	sender = nameWithRealm(sender)
 
 	-- A request for this user's keystone info
-	if msg == 'keystone5?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
+	if msg == 'keystone5?' then return end
+	if msg == 'keystone6?' or (string.starts(msg, 'keystone') and string.ends(msg, '?')) then
 		self:log('Received keystone v%s request from %s', strsub(msg, 9, 9), sender)
 		if self.replyTimers[sender] then
 			self:log('  reply already scheduled')
@@ -378,17 +378,17 @@ function addon:receiveMessage(msg, channel, sender)
 	end
 
 	-- Another user's keystone info
-	local prefix = 'keystone5:'
+	local prefix = 'keystone6:'
 	if string.starts(msg, prefix) then
-		self:log('Received keystone v5 response from ' .. sender)
-		self.versions[sender] = '? (v5)'
+		self:log('Received keystone v6 response from ' .. sender)
+		self.versions[sender] = '? (v6)'
 		local data = self:networkDecode(strsub(msg, strlen(prefix) + 1))
 		if not data then
 			return
 		end
 		--TODO Is there any way to determine if 'name' is actually a character controlled by 'sender'?
 		if data.version then
-			self.versions[sender] = data.version .. ' (v5)'
+			self.versions[sender] = data.version .. ' (v6)'
 		end
 		for name, guid in pairs(data.guids) do
 			self.guids[name] = guid
@@ -474,13 +474,13 @@ function addon:refresh()
 		self.oldKeystones[name] = keystone
 	end
 	if IsInGroup(LE_PARTY_CATEGORY_HOME) then
-		self:SendCommMessage(ADDON_PREFIX, 'keystone5?', 'PARTY')
+		self:SendCommMessage(ADDON_PREFIX, 'keystone6?', 'PARTY')
 	end
 	if GetGuildInfo('player') then
-		self:SendCommMessage(ADDON_PREFIX, 'keystone5?', 'GUILD')
+		self:SendCommMessage(ADDON_PREFIX, 'keystone6?', 'GUILD')
 	end
 	for _, name in pairs(self:getFriendPlayerNames()) do
-		self:SendCommMessage(ADDON_PREFIX, 'keystone5?', 'WHISPER', name)
+		self:SendCommMessage(ADDON_PREFIX, 'keystone6?', 'WHISPER', name)
 	end
 
 	-- Wait a little while, then purge old keystone entries that haven't received an update
@@ -738,7 +738,6 @@ function addon:OnInitialize()
 							printf("      keystoneLevel: %d", keystone.keystoneLevel)
 							printf("      affixIDs: %s", table.concat(keystone.affixIDs, '/'))
 							printf("      lootEligible: %s", keystone.lootEligible and 'true' or 'false')
-							printf("      upgradeTypeID: %d", keystone.upgradeTypeID)
 							printf("      isAlt: %s", keystone.isAlt and 'true' or 'false')
 							printf("      recordTime: %d", keystone.recordTime)
 						end
