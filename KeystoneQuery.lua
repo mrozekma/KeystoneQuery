@@ -4,7 +4,7 @@ local libCompress = LibStub:GetLibrary("LibCompress")
 local AceGUI = LibStub:GetLibrary("AceGUI-3.0")
 
 local version = GetAddOnMetadata('KeystoneQuery', 'Version')
-local debugMode = false
+local debugMode = true
 
 local MYTHIC_KEYSTONE_ID = 138019
 local BROADCAST_RATE = (debugMode and 1 or 15) * 60 -- seconds
@@ -125,20 +125,29 @@ function addon:setMyKeystone()
 				3: Keystone Level
 				4: NotDepleted
 				5... Affixes
-				]]
+
+				|cffa335ee|Hkeystone:198:7:11:14:0!h[Keystone: Darkheart Thicket]|h|r
+				1: Color & ItemClass
+				2: DungeonID
+				3: Keystone Level
+				4... Affixes
+				]]				
 
 				local dungeonID = tonumber(parts[2])
 				local keystoneLevel = tonumber(parts[3])
 				local numAffixes = keystoneLevel < 4 and 0 or keystoneLevel < 7 and 1 or keystoneLevel < 10 and 2 or 3
 				local affixIDs = {}
 				for i = 0, numAffixes - 1 do
-					tinsert(affixIDs, tonumber(parts[5 + i]))
+					tinsert(affixIDs, tonumber(parts[4 + i]))
 				end
-				local lootEligible = (tonumber(parts[4]) == 1)
+				local lootEligible = true
 
 				local newKeystone = {dungeonID = dungeonID, keystoneLevel = keystoneLevel, affixIDs = affixIDs, lootEligible = lootEligible}
 				local oldKeystone = self.myKeystones[name]
 				local changed = (oldKeystone == nil or oldKeystone.keystoneLevel ~= newKeystone.keystoneLevel)
+
+				self:log("%s", tostring(changed))
+
 				self.myKeystones[name] = newKeystone
 				self.myKeystoneOriginalLink = originalLink
 				setLDBText(newKeystone)
@@ -190,7 +199,9 @@ function addon:renderKeystoneLink(keystone, formatted, includeAffixes, includeLo
 		local affixNames = {}
 		for i, id in pairs(keystone.affixIDs) do
 			local affixName, affixDesc = C_ChallengeMode.GetAffixInfo(id)
-			tinsert(affixNames, strlower(affixName))
+			if affixName ~= nil then
+				tinsert(affixNames, strlower(affixName))
+			end
 		end
 		link = format("%s (%s)", link, table.concat(affixNames, '/'))
 	end
