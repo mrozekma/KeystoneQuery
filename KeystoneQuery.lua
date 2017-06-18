@@ -4,7 +4,7 @@ local libCompress = LibStub:GetLibrary("LibCompress")
 local AceGUI = LibStub:GetLibrary("AceGUI-3.0")
 
 local version = GetAddOnMetadata('KeystoneQuery', 'Version')
-local debugMode = false
+local debugMode = true
 
 local MYTHIC_KEYSTONE_ID = 138019
 local BROADCAST_RATE = (debugMode and 1 or 15) * 60 -- seconds
