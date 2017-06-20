@@ -131,7 +131,7 @@ function addon:setMyKeystone()
 				2: DungeonID
 				3: Keystone Level
 				4... Affixes
-				]]				
+				]]
 
 				local dungeonID = tonumber(parts[2])
 				local keystoneLevel = tonumber(parts[3])
@@ -191,7 +191,7 @@ function addon:renderKeystoneLink(keystone, formatted, includeAffixes, includeLo
 	local link
 	if formatted then
 		local linkColor = keystone.lootEligible and LINK_COLORS[numAffixes + 1] or '999999'
-		link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hkeystone:%d:%d:%d:%d:%d:%d|h[%s +%d]|r", min(keystone.keystoneLevel, 15), linkColor, keystone.dungeonID, keystone.keystoneLevel, keystone.lootEligible and '1' or '0', keystone.affixIDs[1] or 0, keystone.affixIDs[2] or 0, keystone.affixIDs[3] or 0, dungeonName, keystone.keystoneLevel)
+		link = format("|TInterface\\Icons\\Achievement_PVP_A_%02d:16|t |cff%s|Hkeystone:%d:%d:%d:%d:%d|h[%s +%d]|r", min(keystone.keystoneLevel, 15), linkColor, keystone.dungeonID, keystone.keystoneLevel, keystone.affixIDs[1] or 0, keystone.affixIDs[2] or 0, keystone.affixIDs[3] or 0, dungeonName, keystone.keystoneLevel)
 	else
 		link = format("%s +%d", dungeonName, keystone.keystoneLevel)
 	end
