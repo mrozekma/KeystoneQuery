@@ -96,7 +96,8 @@ function addon:setMyKeystone()
 			if(GetContainerItemID(bag, slot) == MYTHIC_KEYSTONE_ID) then
 				local originalLink = GetContainerItemLink(bag, slot)
 				self:log("Player's keystone: %s -- %s", originalLink, gsub(originalLink, '|', '!'))
-				local parts = { strsplit(':', originalLink) }
+				local partsLink = gsub(originalLink, '|', ':')
+				local parts = { strsplit(':', partsLink) }
 
 				--[[
 				Thanks to http://wow.gamepedia.com/ItemString for the [Mythic Keystone] link format:
@@ -118,7 +119,7 @@ function addon:setMyKeystone()
 				X..Y: upgradeID (dungeonID, keystoneLevel, affixIDs..., lootEligible)
 				Y..: (numRelicIDs, relicIDs, ...)
 
-				NEW FORMAT:
+				FORMAT 7.2:
 				-- |cffa335ee|Hkeystone:209:7:1:6:3:0|h[Keystone: The Arcway]|h|r
 				1: Color & ItemClass
 				2: DungeonID
@@ -126,19 +127,21 @@ function addon:setMyKeystone()
 				4: NotDepleted
 				5... Affixes
 
-				|cffa335ee|Hkeystone:198:7:11:14:0!h[Keystone: Darkheart Thicket]|h|r
-				1: Color & ItemClass
-				2: DungeonID
-				3: Keystone Level
-				4... Affixes
+				FORMAT 7.2.5 (split into more parts for better recognition):
+				:cffa335ee:Hkeystone:207:11:6:3:9:h[Keystone: Vault of the Wardens]:h:r
+				2: Color 
+				3: ItemClass
+				4: DungeonID
+				5: Keystone Level
+				6... Affixes
 				]]
 
-				local dungeonID = tonumber(parts[2])
-				local keystoneLevel = tonumber(parts[3])
+				local dungeonID = tonumber(parts[4])
+				local keystoneLevel = tonumber(parts[5])
 				local numAffixes = keystoneLevel < 4 and 0 or keystoneLevel < 7 and 1 or keystoneLevel < 10 and 2 or 3
 				local affixIDs = {}
 				for i = 0, numAffixes - 1 do
-					tinsert(affixIDs, tonumber(parts[4 + i]))
+					tinsert(affixIDs, tonumber(parts[6 + i]))
 				end
 				local lootEligible = true
 
@@ -188,6 +191,7 @@ function addon:renderKeystoneLink(keystone, formatted, includeAffixes, includeLo
 
 	local dungeonName = C_ChallengeMode.GetMapInfo(keystone.dungeonID)
 	local numAffixes = #keystone.affixIDs
+
 	local link
 	if formatted then
 		local linkColor = keystone.lootEligible and LINK_COLORS[numAffixes + 1] or '999999'
