@@ -2,7 +2,7 @@
 ## Title: Keystone Query
 ## Author: Michael Mrozek
 ## Notes: An addon to find out which Mythic+ keystones your friends have for the week
-## Version: 2.12
+## Version: 2.13
 ## OptionalDeps: LibDebug
 ## SavedVariables: KeystoneQueryDB
 
