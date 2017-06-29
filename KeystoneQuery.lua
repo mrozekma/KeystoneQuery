@@ -17,19 +17,27 @@ local LINK_COLORS = {'00ff00', 'ffff00', 'ff0000', 'a335ee'} -- Index is number 
 local LOOT_ILVLS = {
    nil, -- LOOT_ILVLS[keystoneLevel * 2] is dungeon chest. LOOT_ILVLS[keystoneLevel * 2 + 1] is class hall chest
 
--- Dungeon Chest  Class Hall Chest  Keystone Level
+-- Dungeon Chest  Class Hall Chest  Keystone Level	AP Token from CHC (AK40)
         865,             nil,            -- 1
-        870,             875,            -- 2
-        870,             880,            -- 3
-        875,             885,            -- 4
-        875,             890,            -- 5
-        880,             890,            -- 6
-        880,             895,            -- 7
-        885,             895,            -- 8
-        885,             900,            -- 9
-        890,             905,            -- 10
-        890,             905,            -- 11
-        890,             905,            -- 12
+        870,             875,            -- 2			50M
+        870,             880,            -- 3 			50M
+        875,             885,            -- 4			77M
+        875,             890,            -- 5			77M
+        880,             890,            -- 6			77M
+        880,             895,            -- 7			86M
+        885,             895,            -- 8			86M
+        885,             900,            -- 9			86M
+        890,             905,            -- 10			125M
+        890,             910,            -- 11			125M + 1x 16M
+        895,             915,            -- 12			125M + 2x 16M
+        900,             920,            -- 13			125M + 3x 16M
+        905,             925,            -- 14			125M + 4x 16M
+        910,             930,            -- 15			200M
+        910,             930,            -- 16			200M + 1x 16M
+        910,             930,            -- 17			200M + 2x 16M
+        910,             930,            -- 18			200M + 3x 16M
+        910,             930,            -- 19			200M + 4x 16M
+        910,             930,            -- 20			200M + 5x 16M
 }
 
 local ldbSource = LibStub("LibDataBroker-1.1"):NewDataObject("KeystoneQuery", {
